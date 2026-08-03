@@ -49,7 +49,7 @@ def match_job(job_description: str, source_url: str | None = None) -> FitAnalysi
         job_description: The full text of the job description to match against.
         source_url: Optional URL the job description was pulled from, for reference.
 
-    Returns a heuristic fit_score (top-match cosine similarity) and the
+    Returns a heuristic retrieval_score (top-match cosine similarity) and the
     retrieved resume chunks with their individual similarity scores. Does
     not synthesize strengths/gaps/notes — reason over the retrieved
     evidence yourself.

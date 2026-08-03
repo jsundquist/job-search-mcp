@@ -29,7 +29,7 @@ def test_build_fit_analysis_returns_evidence_and_score():
 
     assert result["job_description"] == "Senior backend engineer"
     assert result["source_url"] == "https://example.com/job"
-    assert result["fit_score"] == 1.0
+    assert result["retrieval_score"] == 1.0
     assert result["retrieved_chunks"] == [
         {"chunk_id": "resume", "text": "Python, Go, AWS", "similarity": 1.0}
     ]
@@ -48,7 +48,7 @@ def test_build_fit_analysis_chunks_sorted_by_similarity_descending():
     result = build_fit_analysis("job description", None, embedder, store)
 
     assert [c["chunk_id"] for c in result["retrieved_chunks"]] == ["close", "far"]
-    assert result["fit_score"] == result["retrieved_chunks"][0]["similarity"]
+    assert result["retrieval_score"] == result["retrieved_chunks"][0]["similarity"]
 
 
 def test_build_fit_analysis_no_matches_returns_zero_score():
@@ -57,5 +57,5 @@ def test_build_fit_analysis_no_matches_returns_zero_score():
 
     result = build_fit_analysis("job description", None, embedder, store)
 
-    assert result["fit_score"] == 0.0
+    assert result["retrieval_score"] == 0.0
     assert result["retrieved_chunks"] == []

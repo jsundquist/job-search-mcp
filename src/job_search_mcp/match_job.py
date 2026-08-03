@@ -3,6 +3,12 @@
 No internal LLM call — this returns retrieved evidence and a heuristic
 similarity-based score, not a synthesized strengths/gaps writeup. The
 calling assistant is expected to reason over the returned evidence.
+
+The output field is named retrieval_score, not fit_score — it's the top
+retrieved chunk's cosine similarity to the job description, a retrieval
+confidence signal, not a fit judgment. Validation against real postings
+showed it's easy to misread a similarity number as a fit rating when the
+two frequently diverge (see docs/adr/0008-resume-chunking-strategy.md).
 """
 
 from __future__ import annotations
@@ -24,7 +30,7 @@ class RetrievedChunk(TypedDict):
 class FitAnalysis(TypedDict):
     job_description: str
     source_url: str | None
-    fit_score: float
+    retrieval_score: float
     retrieved_chunks: list[RetrievedChunk]
 
 
@@ -50,11 +56,11 @@ def build_fit_analysis(
         key=lambda chunk: chunk["similarity"],
         reverse=True,
     )
-    fit_score = retrieved_chunks[0]["similarity"] if retrieved_chunks else 0.0
+    retrieval_score = retrieved_chunks[0]["similarity"] if retrieved_chunks else 0.0
 
     return {
         "job_description": job_description,
         "source_url": source_url,
-        "fit_score": fit_score,
+        "retrieval_score": retrieval_score,
         "retrieved_chunks": retrieved_chunks,
     }

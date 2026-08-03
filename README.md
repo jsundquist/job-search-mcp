@@ -40,10 +40,13 @@ Embeddings (`src/job_search_mcp/embeddings/`) default to a local
 
 - **`match_job(job_description, source_url=None)`** — embeds the job
   description, retrieves the most relevant resume/experience chunks from
-  the configured `VectorStore`, and returns a heuristic `fit_score`
-  (top-match cosine similarity) plus the retrieved evidence. It does not
-  synthesize strengths/gaps/notes itself — no internal LLM call — so the
-  calling assistant is expected to reason over the returned evidence.
+  the configured `VectorStore`, and returns a heuristic `retrieval_score`
+  (top-match cosine similarity) plus the retrieved evidence. Named
+  `retrieval_score`, not `fit_score` — it's a retrieval confidence signal,
+  not a fit judgment, and the two can diverge (see
+  `docs/adr/0008-resume-chunking-strategy.md`). It does not synthesize
+  strengths/gaps/notes itself — no internal LLM call — so the calling
+  assistant is expected to reason over the returned evidence.
 
 Resume text is split into light, section/role-sized chunks before
 embedding (`src/job_search_mcp/chunking.py`) rather than embedded whole —

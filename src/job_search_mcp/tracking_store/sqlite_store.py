@@ -2,8 +2,11 @@
 
 Zero-dependency fallback for anyone without Notion — no account, no API
 key, no network access required (see
-docs/adr/0003-tracking-store-default-notion.md). Schema covers only the
-fields push_to_tracker maps (status, fit_rating, notes) — see mapping.py.
+docs/adr/0003-tracking-store-default-notion.md). Reads the user's
+TrackingSchema (schema.py, docs/adr/0011) for which tool-populated fields
+to track; only fields with a `sqlite.column` are tracked here at all —
+SQLite has no concept of the manual, pre-existing-row fields Notion
+tracks (company, comp range, source, ...).
 """
 
 from __future__ import annotations
@@ -11,45 +14,54 @@ from __future__ import annotations
 import sqlite3
 
 from job_search_mcp.fit_verdict import FitVerdict
-from job_search_mcp.tracking_store.mapping import build_tracking_fields
-
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS analyses (
-    job_id TEXT PRIMARY KEY,
-    status TEXT NOT NULL,
-    fit_rating TEXT NOT NULL,
-    notes TEXT NOT NULL
+from job_search_mcp.tracking_store.mapping import (
+    build_sqlite_fields_from_schema,
+    sqlite_tool_populated_fields,
 )
-"""
+from job_search_mcp.tracking_store.schema import TrackingSchema
 
 
 class SQLiteTrackingStore:
     """TrackingStore backed by a local SQLite database."""
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str, schema: TrackingSchema) -> None:
         self.db_path = db_path
+        self.schema = schema
+        self._fields = sqlite_tool_populated_fields(schema)
         self._connection = sqlite3.connect(db_path)
-        self._connection.execute(_SCHEMA)
+        self._ensure_table()
+
+    def _ensure_table(self) -> None:
+        # Column names come from TrackingField.sqlite_column, which
+        # schema.py already restricts to a safe identifier shape at load
+        # time — see schema.py's _SQLITE_IDENTIFIER_RE.
+        column_defs = ", ".join(f"{field.sqlite_column} TEXT NOT NULL" for field in self._fields)
+        columns_clause = f"job_id TEXT PRIMARY KEY, {column_defs}" if self._fields else "job_id TEXT PRIMARY KEY"
+        self._connection.execute(f"CREATE TABLE IF NOT EXISTS analyses ({columns_clause})")
         self._connection.commit()
 
+    def _select_columns(self) -> str:
+        column_names = ", ".join(f.sqlite_column for f in self._fields)
+        return f"job_id, {column_names}" if self._fields else "job_id"
+
     def record_analysis(self, job_id: str, analysis: FitVerdict) -> None:
-        fields = build_tracking_fields(analysis)
+        values = build_sqlite_fields_from_schema(self.schema, analysis)
+        columns = ", ".join(values.keys())
+        placeholders = ", ".join(f":{column}" for column in values)
+        updates = ", ".join(f"{column} = excluded.{column}" for column in values)
         self._connection.execute(
-            """
-            INSERT INTO analyses (job_id, status, fit_rating, notes)
-            VALUES (:job_id, :status, :fit_rating, :notes)
-            ON CONFLICT(job_id) DO UPDATE SET
-                status = excluded.status,
-                fit_rating = excluded.fit_rating,
-                notes = excluded.notes
+            f"""
+            INSERT INTO analyses (job_id, {columns})
+            VALUES (:job_id, {placeholders})
+            ON CONFLICT(job_id) DO UPDATE SET {updates}
             """,
-            {"job_id": job_id, **fields},
+            {"job_id": job_id, **values},
         )
         self._connection.commit()
 
     def get_analysis(self, job_id: str) -> dict | None:
         row = self._connection.execute(
-            "SELECT job_id, status, fit_rating, notes FROM analyses WHERE job_id = ?",
+            f"SELECT {self._select_columns()} FROM analyses WHERE job_id = ?",
             (job_id,),
         ).fetchone()
         if row is None:
@@ -57,15 +69,15 @@ class SQLiteTrackingStore:
         return self._row_to_dict(row)
 
     def list_analyses(self) -> list[dict]:
-        rows = self._connection.execute(
-            "SELECT job_id, status, fit_rating, notes FROM analyses"
-        ).fetchall()
+        rows = self._connection.execute(f"SELECT {self._select_columns()} FROM analyses").fetchall()
         return [self._row_to_dict(row) for row in rows]
 
     def close(self) -> None:
         self._connection.close()
 
-    @staticmethod
-    def _row_to_dict(row: tuple) -> dict:
-        job_id, status, fit_rating, notes = row
-        return {"job_id": job_id, "status": status, "fit_rating": fit_rating, "notes": notes}
+    def _row_to_dict(self, row: tuple) -> dict:
+        job_id, *values = row
+        result = {"job_id": job_id}
+        for field, value in zip(self._fields, values, strict=True):
+            result[field.key] = value
+        return result

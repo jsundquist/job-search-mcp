@@ -17,16 +17,17 @@ all — see tracking_store/notion_store.py and sqlite_store.py.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
-# The only values a TrackingField's `derived_from` may name — the fixed
-# set of things a FitVerdict can actually be turned into (see
-# mapping.py's build_tracking_fields/build_notion_properties). Anything
-# else is a per-field config error, not a code error.
-KNOWN_DERIVED_SOURCES = frozenset({"status_fixed", "fit_rating_from_bucket", "key_notes"})
+# sqlite_column is interpolated directly into SQL (column names can't be
+# bound as query parameters), so it's restricted to a safe identifier
+# shape at load time — a structural, not per-field, concern, since an
+# unsafe column name isn't usable regardless of the rest of the schema.
+_SQLITE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class TrackingSchemaError(Exception):
@@ -105,6 +106,14 @@ def _parse_field(entry: object, source: Path) -> TrackingField:
 
     notion = entry.get("notion") or {}
     sqlite = entry.get("sqlite") or {}
+    sqlite_column = sqlite.get("column")
+
+    if sqlite_column and not _SQLITE_IDENTIFIER_RE.match(sqlite_column):
+        raise TrackingSchemaError(
+            f"Tracking schema at {source}: field {key!r} has an invalid sqlite.column "
+            f"{sqlite_column!r} — must be a plain identifier (letters, digits, underscores, "
+            "not starting with a digit)."
+        )
 
     return TrackingField(
         key=key,
@@ -112,5 +121,5 @@ def _parse_field(entry: object, source: Path) -> TrackingField:
         derived_from=derived_from,
         notion_property=notion.get("property"),
         notion_type=notion.get("type"),
-        sqlite_column=sqlite.get("column"),
+        sqlite_column=sqlite_column,
     )

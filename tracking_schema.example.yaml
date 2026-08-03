@@ -43,7 +43,7 @@ fields:
     sqlite:
       column: fit_rating
 
-  - key: key_notes
+  - key: notes
     derived_from: key_notes
     notion:
       property: "Key Notes"

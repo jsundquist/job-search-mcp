@@ -2,15 +2,44 @@ import pytest
 
 from job_search_mcp.fit_verdict import FitVerdict
 from job_search_mcp.tracking_store.mapping import (
-    FIT_RATING_PROPERTY,
-    KEY_NOTES_PROPERTY,
-    STATUS_PROPERTY,
     STATUS_VALUE,
     build_key_notes,
-    build_notion_properties,
-    build_tracking_fields,
+    build_notion_properties_from_schema,
+    build_sqlite_fields_from_schema,
+    compute_derived_value,
     map_bucket_to_fit_rating,
+    parse_notion_property,
 )
+from job_search_mcp.tracking_store.schema import load_tracking_schema
+
+_SCHEMA_YAML = """
+fields:
+  - key: status
+    derived_from: status_fixed
+    notion:
+      property: "Status"
+      type: select
+    sqlite:
+      column: status
+  - key: fit_rating
+    derived_from: fit_rating_from_bucket
+    notion:
+      property: "Fit Rating"
+      type: select
+    sqlite:
+      column: fit_rating
+  - key: notes
+    derived_from: key_notes
+    notion:
+      property: "Key Notes"
+      type: rich_text
+    sqlite:
+      column: notes
+  - key: company
+    manual: true
+    notion:
+      property: "Company"
+"""
 
 
 def _verdict(**overrides) -> FitVerdict:
@@ -26,6 +55,12 @@ def _verdict(**overrides) -> FitVerdict:
     }
     base.update(overrides)
     return base
+
+
+def _schema(tmp_path):
+    schema_file = tmp_path / "tracking_schema.yaml"
+    schema_file.write_text(_SCHEMA_YAML)
+    return load_tracking_schema(schema_file)
 
 
 @pytest.mark.parametrize(
@@ -69,19 +104,49 @@ def test_build_key_notes_omits_empty_sections():
     assert "Red flags:" not in notes
 
 
-def test_build_notion_properties_shape():
-    props = build_notion_properties(_verdict(bucket="Weak Fit"))
+def test_compute_derived_value_dispatches_known_sources():
+    verdict = _verdict(bucket="Weak Fit")
 
-    assert props[STATUS_PROPERTY] == {"select": {"name": STATUS_VALUE}}
-    assert props[FIT_RATING_PROPERTY] == {"select": {"name": "Weak Fit"}}
-    assert "text" in props[KEY_NOTES_PROPERTY]["rich_text"][0]
+    assert compute_derived_value("status_fixed", verdict) == STATUS_VALUE
+    assert compute_derived_value("fit_rating_from_bucket", verdict) == "Weak Fit"
+    assert compute_derived_value("key_notes", verdict) == build_key_notes(verdict)
 
 
-def test_build_tracking_fields_backend_agnostic():
-    fields = build_tracking_fields(_verdict(bucket="Not a Fit"))
+def test_compute_derived_value_rejects_unknown_source():
+    with pytest.raises(ValueError, match="Unrecognized derived_from"):
+        compute_derived_value("not_a_real_source", _verdict())
+
+
+def test_build_notion_properties_from_schema_only_includes_tool_populated_fields(tmp_path):
+    schema = _schema(tmp_path)
+
+    props = build_notion_properties_from_schema(schema, _verdict(bucket="Weak Fit"))
+
+    assert props["Status"] == {"select": {"name": STATUS_VALUE}}
+    assert props["Fit Rating"] == {"select": {"name": "Weak Fit"}}
+    assert "text" in props["Key Notes"]["rich_text"][0]
+    assert "Company" not in props
+
+
+def test_build_sqlite_fields_from_schema(tmp_path):
+    schema = _schema(tmp_path)
+    verdict = _verdict(bucket="Not a Fit")
+
+    fields = build_sqlite_fields_from_schema(schema, verdict)
 
     assert fields == {
         "status": STATUS_VALUE,
         "fit_rating": "Not a Fit",
-        "notes": build_key_notes(_verdict(bucket="Not a Fit")),
+        "notes": build_key_notes(verdict),
     }
+
+
+def test_parse_notion_property_select():
+    assert parse_notion_property({"select": {"name": "Strong Fit"}}, "select") == "Strong Fit"
+    assert parse_notion_property({}, "select") is None
+
+
+def test_parse_notion_property_rich_text():
+    prop = {"rich_text": [{"plain_text": "hello "}, {"plain_text": "world"}]}
+    assert parse_notion_property(prop, "rich_text") == "hello world"
+    assert parse_notion_property({}, "rich_text") == ""

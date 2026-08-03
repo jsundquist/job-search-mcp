@@ -2,6 +2,36 @@ import pytest
 from notion_client.errors import APIErrorCode, APIResponseError
 
 from job_search_mcp.tracking_store.notion_store import NotionTrackingStore
+from job_search_mcp.tracking_store.schema import load_tracking_schema
+
+_SCHEMA_YAML = """
+fields:
+  - key: status
+    derived_from: status_fixed
+    notion:
+      property: "Status"
+      type: select
+  - key: fit_rating
+    derived_from: fit_rating_from_bucket
+    notion:
+      property: "Fit Rating"
+      type: select
+  - key: notes
+    derived_from: key_notes
+    notion:
+      property: "Key Notes"
+      type: rich_text
+  - key: company
+    manual: true
+    notion:
+      property: "Company"
+"""
+
+
+def _schema(tmp_path):
+    schema_file = tmp_path / "tracking_schema.yaml"
+    schema_file.write_text(_SCHEMA_YAML)
+    return load_tracking_schema(schema_file)
 
 
 def _not_found_error() -> APIResponseError:
@@ -49,9 +79,12 @@ class _FakeDataSourcesEndpoint:
 
 
 def _make_store(
-    pages: dict[str, dict], missing_ids: set[str] | None = None, data_sources: list[dict] | None = None
+    tmp_path,
+    pages: dict[str, dict],
+    missing_ids: set[str] | None = None,
+    data_sources: list[dict] | None = None,
 ) -> NotionTrackingStore:
-    store = NotionTrackingStore(database_id="db-1", api_key="secret")
+    store = NotionTrackingStore(database_id="db-1", api_key="secret", schema=_schema(tmp_path))
     store._client.pages = _FakePagesEndpoint(pages, missing_ids)
     store._client.databases = _FakeDatabasesEndpoint(data_sources)
     store._client.data_sources = _FakeDataSourcesEndpoint(pages)
@@ -73,7 +106,7 @@ def _verdict(**overrides):
     return base
 
 
-def test_record_analysis_updates_existing_page_by_id():
+def test_record_analysis_updates_existing_page_by_id(tmp_path):
     pages = {
         "page-1": {
             "id": "page-1",
@@ -81,7 +114,7 @@ def test_record_analysis_updates_existing_page_by_id():
             "properties": {"Company": {"title": [{"plain_text": "Acme"}]}},
         }
     }
-    store = _make_store(pages)
+    store = _make_store(tmp_path, pages)
 
     store.record_analysis("page-1", _verdict(bucket="Weak Fit"))
 
@@ -93,7 +126,7 @@ def test_record_analysis_updates_existing_page_by_id():
     assert pages["page-1"]["properties"]["Company"] == {"title": [{"plain_text": "Acme"}]}
 
 
-def test_get_analysis_parses_mapped_properties():
+def test_get_analysis_parses_mapped_properties(tmp_path):
     pages = {
         "page-1": {
             "id": "page-1",
@@ -105,7 +138,7 @@ def test_get_analysis_parses_mapped_properties():
             },
         }
     }
-    store = _make_store(pages)
+    store = _make_store(tmp_path, pages)
 
     result = store.get_analysis("page-1")
 
@@ -117,14 +150,14 @@ def test_get_analysis_parses_mapped_properties():
     }
 
 
-def test_get_analysis_returns_none_for_archived_page():
+def test_get_analysis_returns_none_for_archived_page(tmp_path):
     pages = {"page-1": {"id": "page-1", "archived": True, "properties": {}}}
-    store = _make_store(pages)
+    store = _make_store(tmp_path, pages)
 
     assert store.get_analysis("page-1") is None
 
 
-def test_list_analyses_returns_all_pages():
+def test_list_analyses_returns_all_pages(tmp_path):
     pages = {
         "page-1": {
             "id": "page-1",
@@ -145,22 +178,22 @@ def test_list_analyses_returns_all_pages():
             },
         },
     }
-    store = _make_store(pages)
+    store = _make_store(tmp_path, pages)
 
     results = store.list_analyses()
 
     assert {r["job_id"] for r in results} == {"page-1", "page-2"}
 
 
-def test_record_analysis_raises_clear_error_for_unknown_job_id():
-    store = _make_store({}, missing_ids={"missing-page"})
+def test_record_analysis_raises_clear_error_for_unknown_job_id(tmp_path):
+    store = _make_store(tmp_path, {}, missing_ids={"missing-page"})
 
     with pytest.raises(RuntimeError, match="No Notion page found for job_id='missing-page'"):
         store.record_analysis("missing-page", _verdict())
 
 
-def test_list_analyses_raises_clear_error_when_database_has_no_data_sources():
-    store = _make_store({}, data_sources=[])
+def test_list_analyses_raises_clear_error_when_database_has_no_data_sources(tmp_path):
+    store = _make_store(tmp_path, {}, data_sources=[])
 
     with pytest.raises(RuntimeError, match="has no data sources"):
         store.list_analyses()

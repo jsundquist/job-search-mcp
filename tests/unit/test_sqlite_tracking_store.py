@@ -1,7 +1,26 @@
 import pytest
 
 from job_search_mcp.tracking_store.mapping import build_key_notes
+from job_search_mcp.tracking_store.schema import load_tracking_schema
 from job_search_mcp.tracking_store.sqlite_store import SQLiteTrackingStore
+
+_SCHEMA_YAML = """
+fields:
+  - key: status
+    derived_from: status_fixed
+    sqlite:
+      column: status
+  - key: fit_rating
+    derived_from: fit_rating_from_bucket
+    sqlite:
+      column: fit_rating
+  - key: notes
+    derived_from: key_notes
+    sqlite:
+      column: notes
+  - key: company
+    manual: true
+"""
 
 
 def _verdict(**overrides):
@@ -20,8 +39,15 @@ def _verdict(**overrides):
 
 
 @pytest.fixture
-def store():
-    s = SQLiteTrackingStore(":memory:")
+def schema(tmp_path):
+    schema_file = tmp_path / "tracking_schema.yaml"
+    schema_file.write_text(_SCHEMA_YAML)
+    return load_tracking_schema(schema_file)
+
+
+@pytest.fixture
+def store(schema):
+    s = SQLiteTrackingStore(":memory:", schema)
     yield s
     s.close()
 

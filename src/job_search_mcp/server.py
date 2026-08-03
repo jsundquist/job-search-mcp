@@ -12,14 +12,15 @@ from pathlib import Path
 from mcp.server import MCPServer
 from mcp_types import CallToolResult, ResourceLink, TextContent
 
-from job_search_mcp.config import NotionConfig, QdrantConfig
+from job_search_mcp.config import NotionConfig, QdrantConfig, tracking_schema_path_from_env
 from job_search_mcp.embeddings.base import Embedder
 from job_search_mcp.embeddings.sentence_transformers_embedder import SentenceTransformersEmbedder
 from job_search_mcp.fit_verdict import FitVerdict
 from job_search_mcp.match_job import FitAnalysis, build_fit_analysis
 from job_search_mcp.tracking_store.base import TrackingStore
-from job_search_mcp.tracking_store.mapping import build_notion_properties
+from job_search_mcp.tracking_store.mapping import build_notion_properties_from_schema
 from job_search_mcp.tracking_store.notion_store import NotionTrackingStore
+from job_search_mcp.tracking_store.schema import TrackingSchema, load_tracking_schema
 from job_search_mcp.vector_store.base import VectorStore
 from job_search_mcp.vector_store.qdrant_store import QdrantVectorStore
 
@@ -31,6 +32,14 @@ _JOB_FIT_RUBRIC_PATH = Path(__file__).resolve().parent.parent.parent / "docs" / 
 _embedder: Embedder | None = None
 _vector_store: VectorStore | None = None
 _tracking_store: TrackingStore | None = None
+_tracking_schema: TrackingSchema | None = None
+
+
+def _get_tracking_schema() -> TrackingSchema:
+    global _tracking_schema
+    if _tracking_schema is None:
+        _tracking_schema = load_tracking_schema(tracking_schema_path_from_env())
+    return _tracking_schema
 
 
 def _get_embedder() -> Embedder:
@@ -57,7 +66,9 @@ def _get_tracking_store() -> TrackingStore:
     global _tracking_store
     if _tracking_store is None:
         config = NotionConfig.from_env()
-        _tracking_store = NotionTrackingStore(database_id=config.database_id, api_key=config.api_key)
+        _tracking_store = NotionTrackingStore(
+            database_id=config.database_id, api_key=config.api_key, schema=_get_tracking_schema()
+        )
     return _tracking_store
 
 
@@ -119,15 +130,15 @@ def push_to_tracker(job_id: str, verdict: FitVerdict, dry_run: bool = False) -> 
         dry_run: If true, returns the mapped Notion properties payload
             without writing anything, so you can review it first.
 
-    Only three of your tracked properties are touched: Status (always
-    set to "Not yet applied"), Fit Rating, and Key Notes — every other
-    property on the row (company, comp range, source, work arrangement,
-    etc.) is left as-is. See docs/adr/0004-tracking-field-mapping-v1-shortcut.md.
+    Only the fields your tracking_schema.yaml marks tool-populated are
+    touched — every other, manual field on the row (company, comp range,
+    source, work arrangement, etc.) is left as-is. See
+    docs/adr/0011-configurable-tracking-field-schema.md.
     """
     if not job_id or not job_id.strip():
         raise ValueError("job_id must not be empty.")
 
-    properties = build_notion_properties(verdict)
+    properties = build_notion_properties_from_schema(_get_tracking_schema(), verdict)
     if dry_run:
         return {"job_id": job_id, "dry_run": True, "properties": properties}
 
@@ -145,11 +156,12 @@ def list_applications(status: str | None = None) -> list[dict]:
             match the tracking store's status value exactly. Omit to
             return every tracked row.
 
-    Each entry has job_id, status, fit_rating, and notes — the same
-    fields push_to_tracker writes (see
-    docs/adr/0004-tracking-field-mapping-v1-shortcut.md). Statuses beyond
-    "Not yet applied" (Applied, Recruiter screen, ...) are manual edits
-    made in Notion, not something this server drives.
+    Each entry has job_id plus whatever tool-populated fields your
+    tracking_schema.yaml declares (see
+    docs/adr/0011-configurable-tracking-field-schema.md) — typically
+    status, fit_rating, and notes. Statuses beyond "Not yet applied"
+    (Applied, Recruiter screen, ...) are manual edits made in Notion, not
+    something this server drives.
     """
     analyses = _get_tracking_store().list_analyses()
     if status is None:

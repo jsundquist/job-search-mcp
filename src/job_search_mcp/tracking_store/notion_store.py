@@ -1,13 +1,14 @@
 """Notion implementation of TrackingStore.
 
-Default tracking store adapter. v1 maps analysis results onto a small,
-hardcoded set of Notion database properties — see
-docs/adr/0004-tracking-field-mapping-v1-shortcut.md and mapping.py.
+Reads the user's TrackingSchema (schema.py, docs/adr/0011) to know which
+Notion properties to write/read — no hardcoded field list (see
+docs/adr/0004-tracking-field-mapping-v1-shortcut.md, superseded by
+docs/adr/0011-configurable-tracking-field-schema.md).
 
 `job_id` is the Notion page ID of a row the author already tracks (added
 when the job was first found) — record_analysis updates that existing
-row's Status/Fit Rating/Key Notes in place. It does not create new rows
-or search for a matching row; the caller supplies the page ID directly.
+row's tool-populated fields in place. It does not create new rows or
+search for a matching row; the caller supplies the page ID directly.
 """
 
 from __future__ import annotations
@@ -17,24 +18,26 @@ from notion_client.errors import APIErrorCode, APIResponseError
 
 from job_search_mcp.fit_verdict import FitVerdict
 from job_search_mcp.tracking_store.mapping import (
-    FIT_RATING_PROPERTY,
-    KEY_NOTES_PROPERTY,
-    STATUS_PROPERTY,
-    build_notion_properties,
+    build_notion_properties_from_schema,
+    parse_notion_property,
 )
+from job_search_mcp.tracking_store.schema import TrackingSchema
 
 
 class NotionTrackingStore:
     """TrackingStore backed by the author's existing Notion tracking database."""
 
-    def __init__(self, database_id: str, api_key: str) -> None:
+    def __init__(self, database_id: str, api_key: str, schema: TrackingSchema) -> None:
         self.database_id = database_id
         self.api_key = api_key
+        self.schema = schema
         self._client = Client(auth=api_key)
 
     def record_analysis(self, job_id: str, analysis: FitVerdict) -> None:
         try:
-            self._client.pages.update(page_id=job_id, properties=build_notion_properties(analysis))
+            self._client.pages.update(
+                page_id=job_id, properties=build_notion_properties_from_schema(self.schema, analysis)
+            )
         except APIResponseError as exc:
             if exc.code == APIErrorCode.ObjectNotFound:
                 raise RuntimeError(
@@ -77,12 +80,9 @@ class NotionTrackingStore:
 
     def _parse_page(self, page: dict) -> dict:
         properties = page["properties"]
-        status = properties.get(STATUS_PROPERTY, {}).get("select") or {}
-        fit_rating = properties.get(FIT_RATING_PROPERTY, {}).get("select") or {}
-        notes_parts = properties.get(KEY_NOTES_PROPERTY, {}).get("rich_text") or []
-        return {
-            "job_id": page["id"],
-            "status": status.get("name"),
-            "fit_rating": fit_rating.get("name"),
-            "notes": "".join(part.get("plain_text", "") for part in notes_parts),
-        }
+        result: dict = {"job_id": page["id"]}
+        for field in self.schema.tool_populated_fields():
+            result[field.key] = parse_notion_property(
+                properties.get(field.notion_property, {}), field.notion_type
+            )
+        return result

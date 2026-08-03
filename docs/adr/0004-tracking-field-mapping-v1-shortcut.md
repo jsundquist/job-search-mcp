@@ -23,6 +23,24 @@ names (e.g. status, fit rating, notes). There is no configuration surface
 for this mapping — it is Python code specific to one Notion database
 schema.
 
+### Concrete v1 mapping (implemented in `tracking_store/mapping.py`)
+
+Only 3 of the author's many tracked Notion properties are touched by
+`push_to_tracker`; every other property on an already-tracked row
+(company, comp range, source, work arrangement, JD link, etc.) is left
+as-is:
+
+| evaluate_fit field | Notion property | Notion type | Mapping |
+|---|---|---|---|
+| (fixed) | `Status` | select | Always set to `"Not yet applied"` — evaluating fit doesn't imply any later status change (Applied, Recruiter screen, ...); those remain manual edits. |
+| `bucket` | `Fit rating` | select | 1:1 by name against the author's 5-option select (`Strong Fit`, `Good Fit`, `Possible Fit`, `Weak Fit`, `Not A Fit`) and evaluate_fit's 5-value bucket enum (amended to 5 tiers by ADR 0010 specifically to make this 1:1 mapping possible — see that ADR for the Good Fit/Strong Fit split rule). Only capitalization of "Not A Fit" differs. |
+| `rationale`, `gate_failures`, `red_flags`, `domain_match`, `scope_match`, `preference_severity` | `Key notes` | rich_text | Concatenated into one structured writeup: overall rationale, then itemized gate failures and red flags (if any), then each layer's category + rationale. |
+
+`push_to_tracker` updates an existing tracked row by Notion page ID
+(`job_id` *is* the page ID) — it never creates a new row or searches for
+one by JD link. The author already adds a row when a job is first found;
+this tool only fills in the fit-analysis columns on that existing row.
+
 This is explicitly scoped as a shortcut that fits the author's current
 setup only, not a design decision meant to generalize. It is documented
 here specifically so it is not mistaken for the intended end state.
@@ -45,3 +63,14 @@ user-defined.
   revisited before this project is presented as usable by anyone other
   than the author, and the YAML-configurable field list is the tracked
   follow-up (see README roadmap).
+- The concrete v1 mapping above is an explicit, known v1 limitation, not
+  the intended end state, exactly as this ADR originally scoped: it
+  assumes the author's specific property names (`Status`, `Fit rating`,
+  `Key notes`), the author's specific 5-option `Fit rating` select values,
+  and the author's specific "update by page ID, never create" write
+  model. None of that generalizes to a different Notion schema, a
+  different set of status/rating options, or a workflow that doesn't
+  pre-add a row before running fit analysis. Phase 5's YAML-configurable
+  field list should treat all of this — property names, option values,
+  and the create-vs-update behavior — as arbitrary and user-defined, not
+  assume this v1 shape is exhaustive or correct.

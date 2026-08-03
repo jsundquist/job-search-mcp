@@ -19,7 +19,10 @@ Three interfaces define the boundaries:
   for fit-analysis results. `NotionTrackingStore` is the store the server
   wires up today (see Setup). `SQLiteTrackingStore` is a zero-dependency
   local implementation that also exists but isn't yet selectable via
-  config — see Roadmap.
+  config — see Roadmap. Both read a user-declared `tracking_schema.yaml`
+  (`docs/adr/0011-configurable-tracking-field-schema.md`) for which
+  fields to write and read, rather than a mapping hardcoded to one
+  specific Notion database.
 - **`ResumeSource`** (`src/job_search_mcp/resume_source/`) — retrieval of
   resume/experience content. Implementation: `FileResumeSource` (local
   text/markdown, PDF, and DOCX parsing).
@@ -61,40 +64,78 @@ Embeddings (`src/job_search_mcp/embeddings/`) default to a local
 - **`push_to_tracker(job_id, verdict, dry_run=False)`** — writes a
   `FitVerdict` (see `docs/evaluate_fit_schema.md`) to the configured
   `TrackingStore`. Updates an existing tracked row by Notion page ID —
-  never creates a new row or searches for one. Only three properties are
-  touched (Status, Fit Rating, Key Notes); every other property on the
-  row is left as-is (`docs/adr/0004-tracking-field-mapping-v1-shortcut.md`).
-  `dry_run=True` returns the mapped properties payload without writing.
+  never creates a new row or searches for one. Only the fields your
+  `tracking_schema.yaml` marks tool-populated are touched; every manual
+  field on the row (company, comp range, source, work arrangement, etc.)
+  is left as-is (`docs/adr/0011-configurable-tracking-field-schema.md`).
+  A misconfigured field (e.g. a `notion.property` that no longer exists
+  on your database) is skipped with a warning rather than failing the
+  whole write — check the result's `warnings`. `dry_run=True` returns
+  the mapped properties payload without writing.
 
 - **`list_applications(status=None)`** — lists tracked jobs from the
-  configured `TrackingStore`, each with `job_id`, `status`, `fit_rating`,
-  and `notes`. Pass `status` to filter to an exact (case-sensitive) match,
-  e.g. `"Not yet applied"` — useful for questions like "what am I waiting
-  to hear back on" without opening Notion.
+  configured `TrackingStore`, each with `job_id` plus whatever
+  tool-populated fields your schema declares (typically `status`,
+  `fit_rating`, `notes`). Pass `status` to filter to an exact
+  (case-sensitive) match, e.g. `"Not yet applied"` — useful for questions
+  like "what am I waiting to hear back on" without opening Notion.
 
 Resume text is split into light, section/role-sized chunks before
 embedding (`src/job_search_mcp/chunking.py`) rather than embedded whole —
 see `docs/adr/0008-resume-chunking-strategy.md`.
+
+## Tracking field schema
+
+`push_to_tracker` and `list_applications` don't hardcode a field list —
+they read `tracking_schema.yaml` (path overridable via
+`TRACKING_SCHEMA_PATH`, gitignored like `.env`; copy
+`tracking_schema.example.yaml` to get started). Each field is declared as
+either:
+
+- **`manual: true`** — the tool never reads or writes it (company, comp
+  range, source, work arrangement, ...). Documentation only.
+- **`derived_from: <status_fixed | fit_rating_from_bucket | key_notes>`**
+  — a tool-populated field, computed from a `FitVerdict`. These three are
+  the only values a `FitVerdict` can currently be turned into; the schema
+  says which of them your tracker wants and under what property/column
+  name, not how to compute them.
+
+A tool-populated field also needs a backend location:
+`notion.property`/`notion.type` for Notion, `sqlite.column` for
+`SQLiteTrackingStore` (which only tracks fields that declare a
+`sqlite.column` at all — it has no concept of Notion's manual fields).
+
+Someone with a simpler tracker than the author's just lists fewer
+fields. A misconfigured individual field (an unrecognized
+`derived_from`, or a `notion.property` that doesn't exist on the live
+database) is warned about and skipped rather than failing the whole
+write; only an unreadable or structurally invalid schema file itself is
+a hard failure. See `docs/adr/0011-configurable-tracking-field-schema.md`
+for the full design.
 
 ## Setup
 
 1. `just install`
 2. Copy `.env.example` to `.env` and fill in your Qdrant and Notion
    connection details.
-3. Ingest a resume: `uv run python -m job_search_mcp.ingest path/to/resume.pdf`
-4. Register with Claude Code (project-scoped):
+3. Copy `tracking_schema.example.yaml` to `tracking_schema.yaml` and edit
+   the field list to match your own tracker (see Tracking field schema,
+   above).
+4. Ingest a resume: `uv run python -m job_search_mcp.ingest path/to/resume.pdf`
+5. Register with Claude Code (project-scoped):
    ```sh
    claude mcp add job-search-mcp -- uv run --directory "$(pwd)" job-search-mcp
    ```
-5. In a Claude Code session in this project, ask it to call `match_job`
+6. In a Claude Code session in this project, ask it to call `match_job`
    with a real job description, then `push_to_tracker` against a row you
    already track in Notion.
 
 ## Roadmap
 
 Shipped: `match_job` (retrieval), `push_to_tracker` and `list_applications`
-against `NotionTrackingStore`, and the ingestion pipeline
-(`ResumeSource` → chunking → embedding → `VectorStore`).
+against `NotionTrackingStore`, the YAML-configurable tracking field
+schema (`docs/adr/0011-configurable-tracking-field-schema.md`), and the
+ingestion pipeline (`ResumeSource` → chunking → embedding → `VectorStore`).
 
 Planned next:
 
@@ -103,14 +144,14 @@ Planned next:
   LLM call, so it no longer depends on the calling assistant applying the
   rubric itself (`docs/adr/0009-caller-agnostic-reversal.md`,
   `docs/adr/0010-layer-split-design-evaluate-fit.md`)
-- Wire `SQLiteTrackingStore` up as a selectable backend (it exists and is
-  tested, but the server currently always constructs `NotionTrackingStore`)
-- Make the Notion tracking field mapping configurable via YAML instead of
-  the current v1 hardcoded field list
-  (`docs/adr/0004-tracking-field-mapping-v1-shortcut.md`)
+- Wire `SQLiteTrackingStore` up as a selectable backend (it exists, reads
+  the same tracking schema, and is tested, but the server currently
+  always constructs `NotionTrackingStore`)
 - Google Drive-backed `ResumeSource` implementation
 - Revisit the embeddings choice if local sentence-transformers quality
   proves insufficient (`docs/adr/0006-embeddings-choice-open.md`)
+- CI (GitHub Actions running `just test`/`just lint` on push/PR) — not
+  set up yet; test/lint discipline is currently manual per change.
 
 ## Development
 

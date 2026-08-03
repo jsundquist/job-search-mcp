@@ -129,6 +129,28 @@ def push_to_tracker(job_id: str, verdict: FitVerdict, dry_run: bool = False) -> 
     return {"job_id": job_id, "dry_run": False, "properties": properties}
 
 
+@mcp.tool()
+def list_applications(status: str | None = None) -> list[dict]:
+    """List tracked jobs from the configured tracking store (Notion).
+
+    Args:
+        status: If given, only return rows whose Status matches exactly
+            (e.g. "Not yet applied", "Applied"). Case-sensitive — must
+            match the tracking store's status value exactly. Omit to
+            return every tracked row.
+
+    Each entry has job_id, status, fit_rating, and notes — the same
+    fields push_to_tracker writes (see
+    docs/adr/0004-tracking-field-mapping-v1-shortcut.md). Statuses beyond
+    "Not yet applied" (Applied, Recruiter screen, ...) are manual edits
+    made in Notion, not something this server drives.
+    """
+    analyses = _get_tracking_store().list_analyses()
+    if status is None:
+        return analyses
+    return [a for a in analyses if a.get("status") == status]
+
+
 def main() -> None:
     mcp.run()
 

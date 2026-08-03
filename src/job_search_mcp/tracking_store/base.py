@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from job_search_mcp.fit_verdict import FitVerdict
+
 
 class TrackingStore(Protocol):
     """Persistence for job fit-analysis records.
@@ -18,7 +20,7 @@ class TrackingStore(Protocol):
     hardcoded v1 field mapping).
     """
 
-    def record_analysis(self, job_id: str, analysis: dict) -> None:
+    def record_analysis(self, job_id: str, analysis: FitVerdict) -> None:
         """Write a fit-analysis result for the given job."""
         ...
 

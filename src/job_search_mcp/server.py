@@ -12,10 +12,14 @@ from pathlib import Path
 from mcp.server import MCPServer
 from mcp_types import CallToolResult, ResourceLink, TextContent
 
-from job_search_mcp.config import QdrantConfig
+from job_search_mcp.config import NotionConfig, QdrantConfig
 from job_search_mcp.embeddings.base import Embedder
 from job_search_mcp.embeddings.sentence_transformers_embedder import SentenceTransformersEmbedder
+from job_search_mcp.fit_verdict import FitVerdict
 from job_search_mcp.match_job import FitAnalysis, build_fit_analysis
+from job_search_mcp.tracking_store.base import TrackingStore
+from job_search_mcp.tracking_store.mapping import build_notion_properties
+from job_search_mcp.tracking_store.notion_store import NotionTrackingStore
 from job_search_mcp.vector_store.base import VectorStore
 from job_search_mcp.vector_store.qdrant_store import QdrantVectorStore
 
@@ -26,6 +30,7 @@ _JOB_FIT_RUBRIC_PATH = Path(__file__).resolve().parent.parent.parent / "docs" / 
 
 _embedder: Embedder | None = None
 _vector_store: VectorStore | None = None
+_tracking_store: TrackingStore | None = None
 
 
 def _get_embedder() -> Embedder:
@@ -46,6 +51,14 @@ def _get_vector_store() -> VectorStore:
             vector_size=len(_get_embedder().embed("dimension probe")),
         )
     return _vector_store
+
+
+def _get_tracking_store() -> TrackingStore:
+    global _tracking_store
+    if _tracking_store is None:
+        config = NotionConfig.from_env()
+        _tracking_store = NotionTrackingStore(database_id=config.database_id, api_key=config.api_key)
+    return _tracking_store
 
 
 @mcp.resource(
@@ -90,6 +103,30 @@ def match_job(job_description: str, source_url: str | None = None) -> FitAnalysi
         ),
     ]
     return CallToolResult(content=content, structured_content=analysis)
+
+
+@mcp.tool()
+def push_to_tracker(job_id: str, verdict: FitVerdict, dry_run: bool = False) -> dict:
+    """Write an evaluate_fit result to the configured tracking store (Notion).
+
+    Args:
+        job_id: The Notion page ID of the job you already track. Updates
+            that existing row in place — never creates a new row.
+        verdict: The full evaluate_fit output (see docs/evaluate_fit_schema.md).
+        dry_run: If true, returns the mapped Notion properties payload
+            without writing anything, so you can review it first.
+
+    Only three of your tracked properties are touched: Status (always
+    set to "Not yet applied"), Fit rating, and Key notes — every other
+    property on the row (company, comp range, source, work arrangement,
+    etc.) is left as-is. See docs/adr/0004-tracking-field-mapping-v1-shortcut.md.
+    """
+    properties = build_notion_properties(verdict)
+    if dry_run:
+        return {"job_id": job_id, "dry_run": True, "properties": properties}
+
+    _get_tracking_store().record_analysis(job_id, verdict)
+    return {"job_id": job_id, "dry_run": False, "properties": properties}
 
 
 def main() -> None:

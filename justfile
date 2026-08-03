@@ -8,4 +8,4 @@ lint:
     uv run ruff check .
 
 run:
-    @echo "No server entrypoint yet — see docs/adr/ for design decisions made so far."
+    uv run job-search-mcp

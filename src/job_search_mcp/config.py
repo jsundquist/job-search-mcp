@@ -45,3 +45,17 @@ class NotionConfig:
                 "NOTION_DATABASE_ID and NOTION_API_KEY must be set (see .env.example)."
             )
         return cls(database_id=database_id, api_key=api_key)
+
+
+DEFAULT_TRACKING_SCHEMA_PATH = "tracking_schema.yaml"
+
+
+def tracking_schema_path_from_env() -> str:
+    """Path to the user's tracking field schema (see tracking_schema.example.yaml).
+
+    Accepts an absolute path, a `~`-relative path, or a path relative to
+    the working directory the server is launched from — not assumed to
+    live inside the repo, so it can point anywhere on disk (e.g. a
+    synced folder shared across machines).
+    """
+    return os.environ.get("TRACKING_SCHEMA_PATH") or DEFAULT_TRACKING_SCHEMA_PATH

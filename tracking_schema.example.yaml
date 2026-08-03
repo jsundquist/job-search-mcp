@@ -1,0 +1,107 @@
+# Copy to tracking_schema.yaml (gitignored, like .env) and edit the field
+# list to match your own tracker. See docs/adr/0011-configurable-tracking-field-schema.md.
+#
+# Every field your tracker has goes here, either as:
+#
+#   manual: true
+#     The tool never reads or writes this field. Declared for
+#     documentation only. Omit `notion`/`sqlite` sections entirely if you
+#     don't need them recorded.
+#
+#   derived_from: <one of status_fixed | fit_rating_from_bucket | key_notes>
+#     The tool computes this field's value from a FitVerdict and writes
+#     it via push_to_tracker. These are the only three values a FitVerdict
+#     can currently be turned into — an unrecognized derived_from is
+#     treated as a misconfigured field (warned about and skipped at write
+#     time), not a reason to fail the whole write.
+#
+# For derived_from fields, `notion.property` (+ `notion.type`, since a
+# Notion property's write shape depends on whether it's select/rich_text/
+# etc.) is required for the Notion backend to write it. `sqlite.column`
+# is only meaningful for the three fields SQLiteTrackingStore tracks at
+# all (status, fit_rating, notes) — SQLite has no concept of your other,
+# manual fields.
+#
+# This example mirrors a real 14-field Notion tracker. If your tracker is
+# simpler, just list fewer fields — push_to_tracker only ever touches the
+# derived_from ones you declare.
+
+fields:
+  - key: status
+    derived_from: status_fixed
+    notion:
+      property: "Status"
+      type: select
+    sqlite:
+      column: status
+
+  - key: fit_rating
+    derived_from: fit_rating_from_bucket
+    notion:
+      property: "Fit Rating"
+      type: select
+    sqlite:
+      column: fit_rating
+
+  - key: key_notes
+    derived_from: key_notes
+    notion:
+      property: "Key Notes"
+      type: rich_text
+    sqlite:
+      column: notes
+
+  - key: company
+    manual: true
+    notion:
+      property: "Company"
+
+  - key: applied_date
+    manual: true
+    notion:
+      property: "Applied Date"
+
+  - key: comp_range
+    manual: true
+    notion:
+      property: "Comp Range"
+
+  - key: date_added
+    manual: true
+    notion:
+      property: "Date Added"
+
+  - key: date_posted
+    manual: true
+    notion:
+      property: "Date Posted"
+
+  - key: jd_link
+    manual: true
+    notion:
+      property: "JD Link"
+
+  - key: level
+    manual: true
+    notion:
+      property: "Level"
+
+  - key: posting_type
+    manual: true
+    notion:
+      property: "Posting Type"
+
+  - key: role
+    manual: true
+    notion:
+      property: "Role"
+
+  - key: source
+    manual: true
+    notion:
+      property: "Source"
+
+  - key: work_arrangement
+    manual: true
+    notion:
+      property: "Work Arrangement"

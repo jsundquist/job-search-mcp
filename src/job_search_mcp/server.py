@@ -6,7 +6,11 @@ Or registered with Claude Code — see README.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from mcp.server import MCPServer
+from mcp_types import CallToolResult, ResourceLink, TextContent
 
 from job_search_mcp.config import QdrantConfig
 from job_search_mcp.embeddings.base import Embedder
@@ -16,6 +20,9 @@ from job_search_mcp.vector_store.base import VectorStore
 from job_search_mcp.vector_store.qdrant_store import QdrantVectorStore
 
 mcp = MCPServer("job-search-mcp")
+
+JOB_FIT_RUBRIC_URI = "job-fit://rubric"
+_JOB_FIT_RUBRIC_PATH = Path(__file__).resolve().parent.parent.parent / "docs" / "job_fit_scoring_algorithm.md"
 
 _embedder: Embedder | None = None
 _vector_store: VectorStore | None = None
@@ -41,6 +48,21 @@ def _get_vector_store() -> VectorStore:
     return _vector_store
 
 
+@mcp.resource(
+    JOB_FIT_RUBRIC_URI,
+    name="job-fit-rubric",
+    title="Job fit scoring algorithm",
+    description=(
+        "5-layer rubric (hard gates, domain match, scope match, preference/logistics, "
+        "red flags) for turning match_job's retrieved evidence into a fit bucket. "
+        "retrieval_score alone is not a reliable fit signal — apply this instead."
+    ),
+    mime_type="text/markdown",
+)
+def job_fit_rubric() -> str:
+    return _JOB_FIT_RUBRIC_PATH.read_text(encoding="utf-8")
+
+
 @mcp.tool()
 def match_job(job_description: str, source_url: str | None = None) -> FitAnalysis:
     """Retrieve resume/experience evidence relevant to a job description.
@@ -52,9 +74,22 @@ def match_job(job_description: str, source_url: str | None = None) -> FitAnalysi
     Returns a heuristic retrieval_score (top-match cosine similarity) and the
     retrieved resume chunks with their individual similarity scores. Does
     not synthesize strengths/gaps/notes — reason over the retrieved
-    evidence yourself.
+    evidence yourself, applying the job-fit://rubric resource linked in this
+    result.
     """
-    return build_fit_analysis(job_description, source_url, _get_embedder(), _get_vector_store())
+    analysis = build_fit_analysis(job_description, source_url, _get_embedder(), _get_vector_store())
+    content = [
+        TextContent(type="text", text=json.dumps(analysis, indent=2)),
+        ResourceLink(
+            type="resource_link",
+            uri=JOB_FIT_RUBRIC_URI,
+            name="job-fit-rubric",
+            title="Job fit scoring algorithm",
+            mime_type="text/markdown",
+            description="Apply this rubric to the retrieved evidence above to determine a fit bucket.",
+        ),
+    ]
+    return CallToolResult(content=content, structured_content=analysis)
 
 
 def main() -> None:

@@ -150,8 +150,6 @@ Planned next:
 - Google Drive-backed `ResumeSource` implementation
 - Revisit the embeddings choice if local sentence-transformers quality
   proves insufficient (`docs/adr/0006-embeddings-choice-open.md`)
-- CI (GitHub Actions running `just test`/`just lint` on push/PR) — not
-  set up yet; test/lint discipline is currently manual per change.
 
 ## Development
 
@@ -161,3 +159,6 @@ just test      # uv run pytest (unit tests only; integration needs QDRANT_URL)
 just lint      # uv run ruff check .
 just run       # uv run job-search-mcp (stdio MCP server)
 ```
+
+CI (`.github/workflows/ci.yml`) runs lint and the unit test suite on
+every push to `main` and every pull request.

@@ -6,15 +6,17 @@ docs/adr/0002-vector-store-default-qdrant.md.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Protocol
 
 
-class VectorRecord(Protocol):
+@dataclass
+class VectorRecord:
     """A single embedded chunk of resume/experience content plus its metadata."""
 
     id: str
     vector: list[float]
-    payload: dict
+    payload: dict = field(default_factory=dict)
 
 
 class VectorStore(Protocol):

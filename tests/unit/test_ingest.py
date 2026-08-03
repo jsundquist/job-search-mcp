@@ -8,7 +8,7 @@ from tests.fakes import FakeEmbedder
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "resumes"
 
 
-def test_ingest_resume_upserts_single_record():
+def test_ingest_resume_upserts_one_record_per_chunk():
     source = FileResumeSource(FIXTURES / "sample_resume.txt")
     embedder = FakeEmbedder()
     store = InMemoryVectorStore()
@@ -16,6 +16,8 @@ def test_ingest_resume_upserts_single_record():
     ingest_resume(source, embedder, store, doc_id="resume")
 
     results = store.search(query_vector=embedder.embed("anything"), top_k=10)
-    assert len(results) == 1
-    assert results[0].id == "resume"
-    assert "Jane Example" in results[0].payload["text"]
+    assert len(results) == 3
+    assert all(r.id.startswith("resume::chunk-") for r in results)
+    assert all(r.payload["resume_id"] == "resume" for r in results)
+    assert any("Jane Example" in r.payload["text"] for r in results)
+    assert any("Python" in r.payload["text"] for r in results)

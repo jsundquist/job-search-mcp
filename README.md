@@ -45,6 +45,10 @@ Embeddings (`src/job_search_mcp/embeddings/`) default to a local
   synthesize strengths/gaps/notes itself — no internal LLM call — so the
   calling assistant is expected to reason over the returned evidence.
 
+Resume text is split into light, section/role-sized chunks before
+embedding (`src/job_search_mcp/chunking.py`) rather than embedded whole —
+see `docs/adr/0008-resume-chunking-strategy.md`.
+
 ## Setup
 
 1. `just install`

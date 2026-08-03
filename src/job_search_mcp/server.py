@@ -90,6 +90,9 @@ def match_job(job_description: str, source_url: str | None = None) -> FitAnalysi
     evidence yourself, applying the job-fit://rubric resource linked in this
     result.
     """
+    if not job_description or not job_description.strip():
+        raise ValueError("job_description must not be empty.")
+
     analysis = build_fit_analysis(job_description, source_url, _get_embedder(), _get_vector_store())
     content = [
         TextContent(type="text", text=json.dumps(analysis, indent=2)),
@@ -121,6 +124,9 @@ def push_to_tracker(job_id: str, verdict: FitVerdict, dry_run: bool = False) -> 
     property on the row (company, comp range, source, work arrangement,
     etc.) is left as-is. See docs/adr/0004-tracking-field-mapping-v1-shortcut.md.
     """
+    if not job_id or not job_id.strip():
+        raise ValueError("job_id must not be empty.")
+
     properties = build_notion_properties(verdict)
     if dry_run:
         return {"job_id": job_id, "dry_run": True, "properties": properties}

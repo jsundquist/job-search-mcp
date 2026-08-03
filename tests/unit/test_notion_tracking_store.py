@@ -1,12 +1,30 @@
+import pytest
+from notion_client.errors import APIErrorCode, APIResponseError
+
 from job_search_mcp.tracking_store.notion_store import NotionTrackingStore
 
 
+def _not_found_error() -> APIResponseError:
+    import httpx
+
+    return APIResponseError(
+        code=APIErrorCode.ObjectNotFound,
+        status=404,
+        message="Could not find page with ID: missing-page.",
+        headers=httpx.Headers(),
+        raw_body_text="",
+    )
+
+
 class _FakePagesEndpoint:
-    def __init__(self, pages: dict[str, dict]):
+    def __init__(self, pages: dict[str, dict], missing_ids: set[str] | None = None):
         self._pages = pages
+        self._missing_ids = missing_ids or set()
         self.update_calls: list[tuple[str, dict]] = []
 
     def update(self, page_id: str, properties: dict) -> None:
+        if page_id in self._missing_ids:
+            raise _not_found_error()
         self.update_calls.append((page_id, properties))
         self._pages[page_id]["properties"].update(properties)
 
@@ -15,8 +33,11 @@ class _FakePagesEndpoint:
 
 
 class _FakeDatabasesEndpoint:
+    def __init__(self, data_sources: list[dict] | None = None):
+        self._data_sources = data_sources if data_sources is not None else [{"id": "ds-1"}]
+
     def retrieve(self, database_id: str) -> dict:
-        return {"data_sources": [{"id": "ds-1"}]}
+        return {"data_sources": self._data_sources}
 
 
 class _FakeDataSourcesEndpoint:
@@ -27,10 +48,12 @@ class _FakeDataSourcesEndpoint:
         return {"results": list(self._pages.values()), "has_more": False, "next_cursor": None}
 
 
-def _make_store(pages: dict[str, dict]) -> NotionTrackingStore:
+def _make_store(
+    pages: dict[str, dict], missing_ids: set[str] | None = None, data_sources: list[dict] | None = None
+) -> NotionTrackingStore:
     store = NotionTrackingStore(database_id="db-1", api_key="secret")
-    store._client.pages = _FakePagesEndpoint(pages)
-    store._client.databases = _FakeDatabasesEndpoint()
+    store._client.pages = _FakePagesEndpoint(pages, missing_ids)
+    store._client.databases = _FakeDatabasesEndpoint(data_sources)
     store._client.data_sources = _FakeDataSourcesEndpoint(pages)
     return store
 
@@ -127,3 +150,17 @@ def test_list_analyses_returns_all_pages():
     results = store.list_analyses()
 
     assert {r["job_id"] for r in results} == {"page-1", "page-2"}
+
+
+def test_record_analysis_raises_clear_error_for_unknown_job_id():
+    store = _make_store({}, missing_ids={"missing-page"})
+
+    with pytest.raises(RuntimeError, match="No Notion page found for job_id='missing-page'"):
+        store.record_analysis("missing-page", _verdict())
+
+
+def test_list_analyses_raises_clear_error_when_database_has_no_data_sources():
+    store = _make_store({}, data_sources=[])
+
+    with pytest.raises(RuntimeError, match="has no data sources"):
+        store.list_analyses()

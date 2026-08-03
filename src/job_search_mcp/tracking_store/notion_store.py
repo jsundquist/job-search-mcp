@@ -13,6 +13,7 @@ or search for a matching row; the caller supplies the page ID directly.
 from __future__ import annotations
 
 from notion_client import Client
+from notion_client.errors import APIErrorCode, APIResponseError
 
 from job_search_mcp.fit_verdict import FitVerdict
 from job_search_mcp.tracking_store.mapping import (
@@ -32,7 +33,16 @@ class NotionTrackingStore:
         self._client = Client(auth=api_key)
 
     def record_analysis(self, job_id: str, analysis: FitVerdict) -> None:
-        self._client.pages.update(page_id=job_id, properties=build_notion_properties(analysis))
+        try:
+            self._client.pages.update(page_id=job_id, properties=build_notion_properties(analysis))
+        except APIResponseError as exc:
+            if exc.code == APIErrorCode.ObjectNotFound:
+                raise RuntimeError(
+                    f"No Notion page found for job_id={job_id!r}. push_to_tracker only updates "
+                    "an existing tracked row — add the job to Notion first, then retry with its "
+                    "page ID."
+                ) from exc
+            raise
 
     def get_analysis(self, job_id: str) -> dict | None:
         page = self._client.pages.retrieve(page_id=job_id)
@@ -45,7 +55,13 @@ class NotionTrackingStore:
         # sources; querying rows goes through data_sources.query, not
         # databases.query. The author's tracker has a single data source.
         database = self._client.databases.retrieve(database_id=self.database_id)
-        data_source_id = database["data_sources"][0]["id"]
+        data_sources = database["data_sources"]
+        if not data_sources:
+            raise RuntimeError(
+                f"Notion database {self.database_id!r} has no data sources — check "
+                "NOTION_DATABASE_ID."
+            )
+        data_source_id = data_sources[0]["id"]
 
         results = []
         cursor = None

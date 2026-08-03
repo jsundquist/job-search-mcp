@@ -11,6 +11,7 @@ import uuid
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
+from qdrant_client.http.exceptions import ResponseHandlingException
 
 from job_search_mcp.vector_store.base import VectorRecord
 
@@ -40,8 +41,17 @@ class QdrantVectorStore:
         self.url = url
         self.api_key = api_key
         self.collection_name = collection_name
-        self._client = QdrantClient(url=url, api_key=api_key)
-        self._ensure_collection(vector_size, distance)
+        try:
+            self._client = QdrantClient(url=url, api_key=api_key)
+            self._ensure_collection(vector_size, distance)
+        except ResponseHandlingException as exc:
+            raise self._connection_error(exc) from exc
+
+    def _connection_error(self, exc: ResponseHandlingException) -> RuntimeError:
+        # ResponseHandlingException wraps the underlying httpx/connection error
+        # in `.source` but doesn't set its own message, so str(exc) is "" —
+        # left unwrapped, callers get an empty, unhelpful error string.
+        return RuntimeError(f"Could not reach Qdrant at {self.url}: {exc.source}")
 
     def _ensure_collection(self, vector_size: int, distance: qmodels.Distance) -> None:
         if self._client.collection_exists(self.collection_name):
@@ -60,22 +70,31 @@ class QdrantVectorStore:
             )
             for record in records
         ]
-        self._client.upsert(collection_name=self.collection_name, points=points)
+        try:
+            self._client.upsert(collection_name=self.collection_name, points=points)
+        except ResponseHandlingException as exc:
+            raise self._connection_error(exc) from exc
 
     def search(self, query_vector: list[float], top_k: int = 5) -> list[VectorRecord]:
-        results = self._client.query_points(
-            collection_name=self.collection_name,
-            query=query_vector,
-            limit=top_k,
-            with_vectors=True,
-        ).points
+        try:
+            results = self._client.query_points(
+                collection_name=self.collection_name,
+                query=query_vector,
+                limit=top_k,
+                with_vectors=True,
+            ).points
+        except ResponseHandlingException as exc:
+            raise self._connection_error(exc) from exc
         return [_to_vector_record(point) for point in results]
 
     def delete(self, ids: list[str]) -> None:
-        self._client.delete(
-            collection_name=self.collection_name,
-            points_selector=qmodels.PointIdsList(points=[_point_id(i) for i in ids]),
-        )
+        try:
+            self._client.delete(
+                collection_name=self.collection_name,
+                points_selector=qmodels.PointIdsList(points=[_point_id(i) for i in ids]),
+            )
+        except ResponseHandlingException as exc:
+            raise self._connection_error(exc) from exc
 
 
 def _to_vector_record(point) -> VectorRecord:

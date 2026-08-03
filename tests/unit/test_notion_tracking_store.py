@@ -62,12 +62,16 @@ class _FakePagesEndpoint:
         return self._pages[page_id]
 
 
+_DEFAULT_KNOWN_PROPERTIES = {"Status": {}, "Fit Rating": {}, "Key Notes": {}, "Company": {}}
+
+
 class _FakeDatabasesEndpoint:
-    def __init__(self, data_sources: list[dict] | None = None):
+    def __init__(self, data_sources: list[dict] | None = None, known_properties: dict | None = None):
         self._data_sources = data_sources if data_sources is not None else [{"id": "ds-1"}]
+        self._known_properties = known_properties if known_properties is not None else _DEFAULT_KNOWN_PROPERTIES
 
     def retrieve(self, database_id: str) -> dict:
-        return {"data_sources": self._data_sources}
+        return {"data_sources": self._data_sources, "properties": self._known_properties}
 
 
 class _FakeDataSourcesEndpoint:
@@ -83,10 +87,11 @@ def _make_store(
     pages: dict[str, dict],
     missing_ids: set[str] | None = None,
     data_sources: list[dict] | None = None,
+    known_properties: dict | None = None,
 ) -> NotionTrackingStore:
     store = NotionTrackingStore(database_id="db-1", api_key="secret", schema=_schema(tmp_path))
     store._client.pages = _FakePagesEndpoint(pages, missing_ids)
-    store._client.databases = _FakeDatabasesEndpoint(data_sources)
+    store._client.databases = _FakeDatabasesEndpoint(data_sources, known_properties)
     store._client.data_sources = _FakeDataSourcesEndpoint(pages)
     return store
 
@@ -197,3 +202,26 @@ def test_list_analyses_raises_clear_error_when_database_has_no_data_sources(tmp_
 
     with pytest.raises(RuntimeError, match="has no data sources"):
         store.list_analyses()
+
+
+def test_record_analysis_skips_field_with_missing_notion_property_and_warns(tmp_path):
+    pages = {"page-1": {"id": "page-1", "archived": False, "properties": {}}}
+    store = _make_store(tmp_path, pages, known_properties={"Status": {}, "Fit Rating": {}})
+
+    warnings = store.record_analysis("page-1", _verdict(bucket="Weak Fit"))
+
+    page_id, properties = store._client.pages.update_calls[0]
+    assert page_id == "page-1"
+    assert "Status" in properties
+    assert "Fit Rating" in properties
+    assert "Key Notes" not in properties
+    assert any("Key Notes" in warning for warning in warnings)
+
+
+def test_record_analysis_returns_no_warnings_when_schema_matches_database(tmp_path):
+    pages = {"page-1": {"id": "page-1", "archived": False, "properties": {}}}
+    store = _make_store(tmp_path, pages)
+
+    warnings = store.record_analysis("page-1", _verdict())
+
+    assert warnings == []

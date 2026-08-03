@@ -35,6 +35,18 @@ FIT_RATING_BY_BUCKET: dict[str, str] = {
 }
 
 
+class TrackingFieldConfigError(ValueError):
+    """A schema field itself is misconfigured (bad derived_from or notion.type).
+
+    Distinct from a plain ValueError a builder raises for bad *data* (e.g.
+    map_bucket_to_fit_rating on a genuinely invalid bucket, which is a
+    real bug upstream, not a misconfigured field) — callers catch only
+    this type to decide what's safe to warn-and-skip versus what should
+    still fail loudly. See build_notion_properties_from_schema and
+    build_sqlite_fields_from_schema.
+    """
+
+
 def map_bucket_to_fit_rating(bucket: str) -> str:
     try:
         return FIT_RATING_BY_BUCKET[bucket]
@@ -81,14 +93,16 @@ _DERIVED_VALUE_BUILDERS: dict[str, Callable[[FitVerdict], str]] = {
 def compute_derived_value(derived_from: str, verdict: FitVerdict) -> str:
     """Compute a tool-populated field's value from a FitVerdict.
 
-    Raises ValueError for a `derived_from` outside the known set — the
-    schema itself doesn't restrict this string, so an unrecognized value
-    is only caught here, at the point something tries to act on it.
+    Raises TrackingFieldConfigError for a `derived_from` outside the
+    known set — the schema itself doesn't restrict this string, so an
+    unrecognized value is only caught here, at the point something tries
+    to act on it. A builder's own ValueError (bad *data*, not a bad
+    field name) is not caught here and propagates as-is.
     """
     try:
         builder = _DERIVED_VALUE_BUILDERS[derived_from]
     except KeyError:
-        raise ValueError(f"Unrecognized derived_from: {derived_from!r}") from None
+        raise TrackingFieldConfigError(f"Unrecognized derived_from: {derived_from!r}") from None
     return builder(verdict)
 
 
@@ -97,36 +111,63 @@ def _notion_property_payload(notion_type: str, value: str) -> dict:
         return {"select": {"name": value}}
     if notion_type == "rich_text":
         return {"rich_text": [{"text": {"content": value}}]}
-    raise ValueError(f"Unsupported notion.type: {notion_type!r}")
+    raise TrackingFieldConfigError(f"Unsupported notion.type: {notion_type!r}")
 
 
-def build_notion_properties_from_schema(schema: TrackingSchema, verdict: FitVerdict) -> dict:
+def build_notion_properties_from_schema(
+    schema: TrackingSchema, verdict: FitVerdict, known_properties: dict | None = None
+) -> tuple[dict, list[str]]:
     """The Notion API `properties` payload for a FitVerdict, per the user's schema.
 
     Only fields the schema marks tool-populated (`manual: false`, i.e. a
-    `derived_from`) are included — manual fields (company, comp range,
+    `derived_from`) are considered — manual fields (company, comp range,
     source, work arrangement, etc.) are never touched.
+
+    Returns (payload, warnings). A misconfigured field — an unrecognized
+    `derived_from`, an unsupported `notion.type`, or (when
+    `known_properties` is given, e.g. the live Notion database's actual
+    property names) a `notion.property` that doesn't exist there — is
+    warned about and left out of the payload rather than failing the
+    whole write. `known_properties=None` skips that last check (used for
+    the network-free dry_run preview, which can't see the live schema).
     """
-    return {
-        field.notion_property: _notion_property_payload(
-            field.notion_type, compute_derived_value(field.derived_from, verdict)
-        )
-        for field in schema.tool_populated_fields()
-    }
+    payload: dict = {}
+    warnings: list[str] = []
+    for field in schema.tool_populated_fields():
+        if not field.notion_property:
+            continue  # no Notion location declared for this field; nothing to write here
+        if known_properties is not None and field.notion_property not in known_properties:
+            warnings.append(
+                f"Skipping tracking field {field.key!r}: Notion property "
+                f"{field.notion_property!r} does not exist on the configured database."
+            )
+            continue
+        try:
+            value = compute_derived_value(field.derived_from, verdict)
+            payload[field.notion_property] = _notion_property_payload(field.notion_type, value)
+        except TrackingFieldConfigError as exc:
+            warnings.append(f"Skipping tracking field {field.key!r}: {exc}")
+    return payload, warnings
 
 
-def build_sqlite_fields_from_schema(schema: TrackingSchema, verdict: FitVerdict) -> dict[str, str]:
-    """Column-name -> value for the tool-populated fields SQLite tracks.
+def build_sqlite_fields_from_schema(schema: TrackingSchema, verdict: FitVerdict) -> tuple[dict[str, str], list[str]]:
+    """Column-name -> value for the tool-populated fields SQLite tracks, plus warnings.
 
     Fields without a `sqlite.column` (fine for e.g. a Notion-only field
     the user's tracker has no SQLite equivalent for) are silently
-    excluded, not written anywhere for that backend.
+    excluded, not written anywhere for that backend. A field with an
+    unrecognized `derived_from` is warned about and skipped instead.
     """
-    return {
-        field.sqlite_column: compute_derived_value(field.derived_from, verdict)
-        for field in schema.tool_populated_fields()
-        if field.sqlite_column
-    }
+    values: dict[str, str] = {}
+    warnings: list[str] = []
+    for field in schema.tool_populated_fields():
+        if not field.sqlite_column:
+            continue
+        try:
+            values[field.sqlite_column] = compute_derived_value(field.derived_from, verdict)
+        except TrackingFieldConfigError as exc:
+            warnings.append(f"Skipping tracking field {field.key!r}: {exc}")
+    return values, warnings
 
 
 def parse_notion_property(prop: dict, notion_type: str | None) -> str | None:

@@ -134,16 +134,23 @@ def push_to_tracker(job_id: str, verdict: FitVerdict, dry_run: bool = False) -> 
     touched — every other, manual field on the row (company, comp range,
     source, work arrangement, etc.) is left as-is. See
     docs/adr/0011-configurable-tracking-field-schema.md.
+
+    A misconfigured tool-populated field (an unrecognized derived_from,
+    or — on a real write, not dry_run — a notion.property that doesn't
+    exist on your database) is skipped rather than failing the whole
+    write; check `warnings` in the result. dry_run's warnings only cover
+    what can be checked without a Notion API call, since dry_run makes
+    none — a bad property name only shows up in `warnings` on a real write.
     """
     if not job_id or not job_id.strip():
         raise ValueError("job_id must not be empty.")
 
-    properties = build_notion_properties_from_schema(_get_tracking_schema(), verdict)
+    properties, preview_warnings = build_notion_properties_from_schema(_get_tracking_schema(), verdict)
     if dry_run:
-        return {"job_id": job_id, "dry_run": True, "properties": properties}
+        return {"job_id": job_id, "dry_run": True, "properties": properties, "warnings": preview_warnings}
 
-    _get_tracking_store().record_analysis(job_id, verdict)
-    return {"job_id": job_id, "dry_run": False, "properties": properties}
+    write_warnings = _get_tracking_store().record_analysis(job_id, verdict)
+    return {"job_id": job_id, "dry_run": False, "properties": properties, "warnings": write_warnings}
 
 
 @mcp.tool()

@@ -120,25 +120,67 @@ def test_compute_derived_value_rejects_unknown_source():
 def test_build_notion_properties_from_schema_only_includes_tool_populated_fields(tmp_path):
     schema = _schema(tmp_path)
 
-    props = build_notion_properties_from_schema(schema, _verdict(bucket="Weak Fit"))
+    props, warnings = build_notion_properties_from_schema(schema, _verdict(bucket="Weak Fit"))
 
     assert props["Status"] == {"select": {"name": STATUS_VALUE}}
     assert props["Fit Rating"] == {"select": {"name": "Weak Fit"}}
     assert "text" in props["Key Notes"]["rich_text"][0]
     assert "Company" not in props
+    assert warnings == []
+
+
+def test_build_notion_properties_from_schema_warns_and_skips_missing_known_property(tmp_path):
+    schema = _schema(tmp_path)
+
+    props, warnings = build_notion_properties_from_schema(
+        schema, _verdict(), known_properties={"Status": {}, "Fit Rating": {}}
+    )
+
+    assert "Status" in props
+    assert "Fit Rating" in props
+    assert "Key Notes" not in props
+    assert len(warnings) == 1
+    assert "Key Notes" in warnings[0]
 
 
 def test_build_sqlite_fields_from_schema(tmp_path):
     schema = _schema(tmp_path)
     verdict = _verdict(bucket="Not a Fit")
 
-    fields = build_sqlite_fields_from_schema(schema, verdict)
+    fields, warnings = build_sqlite_fields_from_schema(schema, verdict)
 
     assert fields == {
         "status": STATUS_VALUE,
         "fit_rating": "Not a Fit",
         "notes": build_key_notes(verdict),
     }
+    assert warnings == []
+
+
+def test_build_notion_properties_from_schema_warns_and_skips_unrecognized_derived_from(tmp_path):
+    schema_file = tmp_path / "tracking_schema.yaml"
+    schema_file.write_text(
+        "fields:\n"
+        "  - key: status\n"
+        "    derived_from: status_fixed\n"
+        "    notion:\n"
+        "      property: Status\n"
+        "      type: select\n"
+        "  - key: mystery\n"
+        "    derived_from: not_a_real_source\n"
+        "    notion:\n"
+        "      property: Mystery\n"
+        "      type: select\n"
+    )
+    schema = load_tracking_schema(schema_file)
+
+    props, warnings = build_notion_properties_from_schema(schema, _verdict())
+
+    assert "Status" in props
+    assert "Mystery" not in props
+    assert len(warnings) == 1
+    assert "mystery" in warnings[0]
+    assert "not_a_real_source" in warnings[0]
 
 
 def test_parse_notion_property_select():

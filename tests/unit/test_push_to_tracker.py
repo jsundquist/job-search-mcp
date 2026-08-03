@@ -45,8 +45,9 @@ class _FakeTrackingStore:
     def __init__(self):
         self.recorded: list[tuple[str, dict]] = []
 
-    def record_analysis(self, job_id, analysis):
+    def record_analysis(self, job_id, analysis) -> list[str]:
         self.recorded.append((job_id, analysis))
+        return []
 
     def get_analysis(self, job_id):
         raise NotImplementedError
@@ -66,6 +67,7 @@ def test_push_to_tracker_dry_run_does_not_write(monkeypatch):
     assert result["job_id"] == "page-1"
     assert result["properties"]["Status"] == {"select": {"name": "Not yet applied"}}
     assert result["properties"]["Fit Rating"] == {"select": {"name": "Possible Fit"}}
+    assert result["warnings"] == []
     assert fake_store.recorded == []
 
 
@@ -77,4 +79,5 @@ def test_push_to_tracker_writes_when_not_dry_run(monkeypatch):
     result = server.push_to_tracker("page-1", _verdict(bucket="Not a Fit"))
 
     assert result["dry_run"] is False
+    assert result["warnings"] == []
     assert fake_store.recorded == [("page-1", _verdict(bucket="Not a Fit"))]

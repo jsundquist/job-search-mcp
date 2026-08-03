@@ -13,6 +13,8 @@ search for a matching row; the caller supplies the page ID directly.
 
 from __future__ import annotations
 
+import logging
+
 from notion_client import Client
 from notion_client.errors import APIErrorCode, APIResponseError
 
@@ -22,6 +24,8 @@ from job_search_mcp.tracking_store.mapping import (
     parse_notion_property,
 )
 from job_search_mcp.tracking_store.schema import TrackingSchema
+
+logger = logging.getLogger(__name__)
 
 
 class NotionTrackingStore:
@@ -33,11 +37,14 @@ class NotionTrackingStore:
         self.schema = schema
         self._client = Client(auth=api_key)
 
-    def record_analysis(self, job_id: str, analysis: FitVerdict) -> None:
+    def record_analysis(self, job_id: str, analysis: FitVerdict) -> list[str]:
+        known_properties = self._client.databases.retrieve(database_id=self.database_id).get("properties", {})
+        properties, warnings = build_notion_properties_from_schema(self.schema, analysis, known_properties)
+        for warning in warnings:
+            logger.warning(warning)
+
         try:
-            self._client.pages.update(
-                page_id=job_id, properties=build_notion_properties_from_schema(self.schema, analysis)
-            )
+            self._client.pages.update(page_id=job_id, properties=properties)
         except APIResponseError as exc:
             if exc.code == APIErrorCode.ObjectNotFound:
                 raise RuntimeError(
@@ -46,6 +53,7 @@ class NotionTrackingStore:
                     "page ID."
                 ) from exc
             raise
+        return warnings
 
     def get_analysis(self, job_id: str) -> dict | None:
         page = self._client.pages.retrieve(page_id=job_id)

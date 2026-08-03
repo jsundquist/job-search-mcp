@@ -87,3 +87,34 @@ def test_list_analyses_returns_all_recorded_jobs(store):
     results = store.list_analyses()
 
     assert {r["job_id"] for r in results} == {"job-1", "job-2"}
+
+
+def test_record_analysis_returns_no_warnings_for_a_valid_schema(store):
+    assert store.record_analysis("job-1", _verdict()) == []
+
+
+def test_record_analysis_warns_and_skips_unrecognized_derived_from(tmp_path):
+    schema_file = tmp_path / "tracking_schema.yaml"
+    schema_file.write_text(
+        "fields:\n"
+        "  - key: status\n"
+        "    derived_from: status_fixed\n"
+        "    sqlite:\n"
+        "      column: status\n"
+        "  - key: mystery\n"
+        "    derived_from: not_a_real_source\n"
+        "    sqlite:\n"
+        "      column: mystery\n"
+    )
+    schema = load_tracking_schema(schema_file)
+    store = SQLiteTrackingStore(":memory:", schema)
+    try:
+        warnings = store.record_analysis("job-1", _verdict())
+
+        assert len(warnings) == 1
+        assert "mystery" in warnings[0]
+        result = store.get_analysis("job-1")
+        assert result["status"] == "Not yet applied"
+        assert result["mystery"] is None
+    finally:
+        store.close()

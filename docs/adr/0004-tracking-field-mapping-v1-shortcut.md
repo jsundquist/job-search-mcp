@@ -2,7 +2,14 @@
 
 ## Status
 
-Accepted (known limitation, not the intended end state)
+Superseded by `docs/adr/0011-configurable-tracking-field-schema.md`,
+exactly as this ADR anticipated ("a later phase will replace the
+hardcoded mapping with a configurable field list" — see Consequences
+below). The concrete v1 mapping described here (hardcoded
+`Status`/`Fit Rating`/`Key Notes` property names, `mapping.py` constants)
+no longer reflects the code; it's kept below as the historical record of
+why a hardcoded mapping was the right first step, not as current
+behavior.
 
 ## Context
 

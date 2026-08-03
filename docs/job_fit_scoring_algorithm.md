@@ -63,6 +63,20 @@ scope (owns architecture for a platform vs. contributes to a feature team)
 against the candidate's actual level and scope. Check IC-track vs.
 management-track framing against stated openness to both.
 
+Layer 3 is also the one layer that reads per-candidate calibration
+context: `title_mapping_note`, read from `candidate_profile.yaml` and
+threaded into the internal LLM call's prompt for this layer only (see
+`docs/evaluate_fit_schema.md`) — a free-text note the candidate supplies
+once, up front, to correct for employer-specific title inflation or
+deflation (e.g. "my last employer had no 'Staff' tier, so my 'Principal'
+title maps closer to industry-standard 'Staff'"). This is qualitative
+guidance fed into the LLM's judgment, not a rule the deterministic layers
+apply — unlike Layer 6 below, there is no enum or demotion tier attached
+to it directly; it only ever influences how `scope_match.category` gets
+judged. See `docs/adr/0012-comp-floor-and-title-mapping-calibration.md`
+for why this is config rather than a tool-input parameter, and for the
+explicit rigor asymmetry between this and Layer 6.
+
 ## Layer 4 — Preference & logistics match
 
 Stated preference is "remote preferred, open to hybrid" — so hybrid itself
@@ -85,7 +99,43 @@ Also covers: direct hire vs. contract-to-hire vs. contract, industry (open to an
 
 Comp ambiguity, unclear reporting line, scope creep, degree requirement
 with no equivalent-experience carve-out, excessive on-call/travel,
-anything that reads as a bait-and-switch in the posting.
+anything that reads as a bait-and-switch in the posting. "Comp ambiguity"
+here means vague or evasive comp language (e.g. "competitive salary" with
+no number, an implausibly wide range) — a posting that lists **no** comp
+range at all is scored exclusively by Layer 6 below, not double-counted
+here, to avoid demoting the same underlying fact twice.
+
+## Layer 6 — Comp floor check
+
+Deterministic, not LLM judgment — same category as Layer 1 and Layer 4.
+Compares the posting's stated comp ceiling against the candidate's
+`target_floor` (read from `candidate_profile.yaml` at server startup, not
+supplied per-call — see `docs/evaluate_fit_schema.md`'s "Tool input"
+section and `docs/adr/0012-comp-floor-and-title-mapping-calibration.md`
+for why this is config, not a tool parameter).
+
+- Posting's stated ceiling >= `target_floor` → no penalty
+- Ceiling below `target_floor`, within 10% under → small penalty
+- Ceiling more than 10% under `target_floor` → moderate-to-large penalty
+- No comp listed at all, so the floor can't be verified → moderate-to-large
+  penalty — treated the same as "well under," not as "no penalty by
+  default." An unlisted range is not evidence the floor is met.
+
+This reuses Layer 4's exact four-tier severity enum
+(`no penalty | small penalty | moderate-to-large penalty | gate-like`) for
+consistency with the rest of the demotion model, rather than a bespoke
+enum. `gate-like` is available in the enum but is not currently assigned
+by any rule above; it is reserved for a future case (e.g. a ceiling far
+enough under the floor to be a non-starter outright), not triggered by
+"no comp listed." The 10% cutoff is a starting number, not independently
+validated — see
+`docs/adr/0012-comp-floor-and-title-mapping-calibration.md`.
+
+`target_floor` is assumed to be a single number in the same units/
+structure a posting's comp range is expected to use (e.g. annual total
+target comp). Reconciling mismatched structures — hourly contract rates,
+equity-heavy offers, base-only vs. base+bonus postings — is not handled
+by this design; see the ADR for this limitation.
 
 ## Bucket model
 
@@ -97,10 +147,12 @@ demotion-count model (each layer/gate contributes a uniform +1 demotion
 when triggered, buckets read off the total) as part of the
 `evaluate_fit` design. See
 `docs/adr/0010-layer-split-design-evaluate-fit.md` for the full model,
-per-layer demotion rules, and validation against the 4 known postings, and
-`docs/evaluate_fit_schema.md` for the schema that implements it. The old
-table below is kept only as a historical record of what was replaced, not
-as a live scoring method:
+per-layer demotion rules, and validation against the 4 known postings,
+`docs/adr/0012-comp-floor-and-title-mapping-calibration.md` for the
+Layer 6 (comp floor) addition and the title-mapping calibration input,
+and `docs/evaluate_fit_schema.md` for the schema that implements both.
+The old table below is kept only as a historical record of what was
+replaced, not as a live scoring method:
 
 | Bucket | Composite score (retired) |
 |---|---|
@@ -115,9 +167,10 @@ Output structured JSON, not just a number. `domain_match`/`scope_match` use
 the strict `high | medium | low` enum from Layers 2/3 above;
 `preference_severity` (not `preference_match`) uses the strict
 `no penalty | small penalty | moderate-to-large penalty | gate-like` enum,
-Layer 4's four severity tiers verbatim; each is an object with its own
-`category` and `rationale` rather than a single "category - rationale"
-string, so category stays machine-checkable:
+Layer 4's four severity tiers verbatim; `comp_floor_check` (Layer 6)
+reuses the same four-tier enum for its own `category`; each is an object
+with its own `category` and `rationale` rather than a single "category -
+rationale" string, so category stays machine-checkable:
 
 ```json
 {
@@ -134,11 +187,24 @@ string, so category stays machine-checkable:
     "category": "moderate-to-large penalty",
     "rationale": "hybrid 3x/week vs. remote-preferred"
   },
+  "comp_floor_check": {
+    "meets_floor": false,
+    "target_floor": 190000,
+    "posting_ceiling": 175000,
+    "category": "small penalty",
+    "rationale": "posting ceiling $175k, ~8% under target floor $190k"
+  },
   "red_flags": [],
   "bucket": "Possible Fit",
   "rationale": "..."
 }
 ```
+
+Note that `title_mapping_note` never appears in this output shape — it is
+per-candidate context supplied to the internal LLM call for Layer 3, not
+a judged field in its own right. See `docs/evaluate_fit_schema.md` and
+`docs/adr/0012-comp-floor-and-title-mapping-calibration.md` for where it
+lives and how it's threaded in.
 
 Read the required-vs-preferred split, name the domain gap explicitly, and
 let a gate failure override the raw similarity number. This is exactly the

@@ -18,6 +18,9 @@ build/
 # Personal tracking schema (see tracking_schema.example.yaml)
 tracking_schema.yaml
 
+# Personal candidate profile (see candidate_profile.example.yaml)
+candidate_profile.yaml
+
 # Test / tooling
 .pytest_cache/
 .ruff_cache/

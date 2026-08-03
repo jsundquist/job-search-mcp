@@ -1,0 +1,19 @@
+# Copy to candidate_profile.yaml and fill in with your own values.
+# Never commit candidate_profile.yaml. See
+# docs/adr/0012-comp-floor-and-title-mapping-calibration.md.
+
+# Minimum acceptable total comp (used by evaluate_fit's Layer 6 comp-floor
+# check). Compared against the posting's stated ceiling, not its floor.
+# Assumed to be a single number in the same units/structure a posting's
+# comp range is expected to use (e.g. annual total target comp) — hourly
+# contract rates, equity-heavy offers, and base-only vs. base+bonus
+# postings are not reconciled automatically.
+target_floor: 190000
+
+# Free-text note correcting for employer-specific title inflation or
+# deflation, read into the internal LLM call's prompt context for Layer 3
+# (role scope & seniority match) only. Optional — omit or leave blank if
+# not applicable.
+title_mapping_note: >
+  My last employer had no "Staff" tier; my "Principal" title maps closer
+  to industry-standard "Staff," not "Principal."

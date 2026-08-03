@@ -67,6 +67,7 @@ class QdrantVectorStore:
             collection_name=self.collection_name,
             query=query_vector,
             limit=top_k,
+            with_vectors=True,
         ).points
         return [_to_vector_record(point) for point in results]
 

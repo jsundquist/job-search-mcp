@@ -8,18 +8,8 @@ intended to replace a real vector database at scale.
 
 from __future__ import annotations
 
-import math
-
+from job_search_mcp.similarity import cosine_similarity
 from job_search_mcp.vector_store.base import VectorRecord
-
-
-def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b, strict=True))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(y * y for y in b))
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
 
 
 class InMemoryVectorStore:
@@ -35,7 +25,7 @@ class InMemoryVectorStore:
     def search(self, query_vector: list[float], top_k: int = 5) -> list[VectorRecord]:
         scored = sorted(
             self._records.values(),
-            key=lambda r: _cosine_similarity(r.vector, query_vector),
+            key=lambda r: cosine_similarity(r.vector, query_vector),
             reverse=True,
         )
         return scored[:top_k]

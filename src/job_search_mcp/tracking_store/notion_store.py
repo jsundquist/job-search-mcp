@@ -6,7 +6,7 @@ docs/adr/0004-tracking-field-mapping-v1-shortcut.md and mapping.py.
 
 `job_id` is the Notion page ID of a row the author already tracks (added
 when the job was first found) — record_analysis updates that existing
-row's Status/Fit rating/Key notes in place. It does not create new rows
+row's Status/Fit Rating/Key Notes in place. It does not create new rows
 or search for a matching row; the caller supplies the page ID directly.
 """
 

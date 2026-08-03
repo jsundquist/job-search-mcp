@@ -50,7 +50,7 @@ def test_record_analysis_upserts_existing_job(store):
 
     result = store.get_analysis("job-1")
 
-    assert result["fit_rating"] == "Not A Fit"
+    assert result["fit_rating"] == "Not a Fit"
     assert len(store.list_analyses()) == 1
 
 

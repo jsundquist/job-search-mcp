@@ -33,8 +33,8 @@ as-is:
 | evaluate_fit field | Notion property | Notion type | Mapping |
 |---|---|---|---|
 | (fixed) | `Status` | select | Always set to `"Not yet applied"` — evaluating fit doesn't imply any later status change (Applied, Recruiter screen, ...); those remain manual edits. |
-| `bucket` | `Fit rating` | select | 1:1 by name against the author's 5-option select (`Strong Fit`, `Good Fit`, `Possible Fit`, `Weak Fit`, `Not A Fit`) and evaluate_fit's 5-value bucket enum (amended to 5 tiers by ADR 0010 specifically to make this 1:1 mapping possible — see that ADR for the Good Fit/Strong Fit split rule). Only capitalization of "Not A Fit" differs. |
-| `rationale`, `gate_failures`, `red_flags`, `domain_match`, `scope_match`, `preference_severity` | `Key notes` | rich_text | Concatenated into one structured writeup: overall rationale, then itemized gate failures and red flags (if any), then each layer's category + rationale. |
+| `bucket` | `Fit Rating` | select | Identical strings against the author's Fit Rating select (`Strong Fit`, `Good Fit`, `Possible Fit`, `Weak Fit`, `Not a Fit`, plus a `Not yet evaluated` option this tool never sets) and evaluate_fit's 5-value bucket enum (amended to 5 tiers by ADR 0010 specifically to make this mapping possible — see that ADR for the Good Fit/Strong Fit split rule). |
+| `rationale`, `gate_failures`, `red_flags`, `domain_match`, `scope_match`, `preference_severity` | `Key Notes` | rich_text | Concatenated into one structured writeup: overall rationale, then itemized gate failures and red flags (if any), then each layer's category + rationale. |
 
 `push_to_tracker` updates an existing tracked row by Notion page ID
 (`job_id` *is* the page ID) — it never creates a new row or searches for
@@ -65,8 +65,8 @@ user-defined.
   follow-up (see README roadmap).
 - The concrete v1 mapping above is an explicit, known v1 limitation, not
   the intended end state, exactly as this ADR originally scoped: it
-  assumes the author's specific property names (`Status`, `Fit rating`,
-  `Key notes`), the author's specific 5-option `Fit rating` select values,
+  assumes the author's specific property names (`Status`, `Fit Rating`,
+  `Key Notes`), the author's specific `Fit Rating` select values,
   and the author's specific "update by page ID, never create" write
   model. None of that generalizes to a different Notion schema, a
   different set of status/rating options, or a workflow that doesn't

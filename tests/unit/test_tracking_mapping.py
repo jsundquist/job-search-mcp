@@ -35,7 +35,7 @@ def _verdict(**overrides) -> FitVerdict:
         ("Good Fit", "Good Fit"),
         ("Possible Fit", "Possible Fit"),
         ("Weak Fit", "Weak Fit"),
-        ("Not a Fit", "Not A Fit"),
+        ("Not a Fit", "Not a Fit"),
     ],
 )
 def test_map_bucket_to_fit_rating(bucket, expected):
@@ -82,6 +82,6 @@ def test_build_tracking_fields_backend_agnostic():
 
     assert fields == {
         "status": STATUS_VALUE,
-        "fit_rating": "Not A Fit",
+        "fit_rating": "Not a Fit",
         "notes": build_key_notes(_verdict(bucket="Not a Fit")),
     }

@@ -65,7 +65,7 @@ def test_record_analysis_updates_existing_page_by_id():
     page_id, properties = store._client.pages.update_calls[0]
     assert page_id == "page-1"
     assert properties["Status"] == {"select": {"name": "Not yet applied"}}
-    assert properties["Fit rating"] == {"select": {"name": "Weak Fit"}}
+    assert properties["Fit Rating"] == {"select": {"name": "Weak Fit"}}
     # untouched company property remains
     assert pages["page-1"]["properties"]["Company"] == {"title": [{"plain_text": "Acme"}]}
 
@@ -77,8 +77,8 @@ def test_get_analysis_parses_mapped_properties():
             "archived": False,
             "properties": {
                 "Status": {"select": {"name": "Not yet applied"}},
-                "Fit rating": {"select": {"name": "Possible Fit"}},
-                "Key notes": {"rich_text": [{"plain_text": "Some notes"}]},
+                "Fit Rating": {"select": {"name": "Possible Fit"}},
+                "Key Notes": {"rich_text": [{"plain_text": "Some notes"}]},
             },
         }
     }
@@ -108,8 +108,8 @@ def test_list_analyses_returns_all_pages():
             "archived": False,
             "properties": {
                 "Status": {"select": {"name": "Not yet applied"}},
-                "Fit rating": {"select": {"name": "Strong Fit"}},
-                "Key notes": {"rich_text": []},
+                "Fit Rating": {"select": {"name": "Strong Fit"}},
+                "Key Notes": {"rich_text": []},
             },
         },
         "page-2": {
@@ -117,8 +117,8 @@ def test_list_analyses_returns_all_pages():
             "archived": False,
             "properties": {
                 "Status": {"select": {"name": "Applied"}},
-                "Fit rating": {"select": {"name": "Good Fit"}},
-                "Key notes": {"rich_text": [{"plain_text": "notes"}]},
+                "Fit Rating": {"select": {"name": "Good Fit"}},
+                "Key Notes": {"rich_text": [{"plain_text": "notes"}]},
             },
         },
     }

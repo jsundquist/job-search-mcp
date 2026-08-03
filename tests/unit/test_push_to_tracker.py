@@ -39,7 +39,7 @@ def test_push_to_tracker_dry_run_does_not_write(monkeypatch):
     assert result["dry_run"] is True
     assert result["job_id"] == "page-1"
     assert result["properties"]["Status"] == {"select": {"name": "Not yet applied"}}
-    assert result["properties"]["Fit rating"] == {"select": {"name": "Possible Fit"}}
+    assert result["properties"]["Fit Rating"] == {"select": {"name": "Possible Fit"}}
     assert fake_store.recorded == []
 
 

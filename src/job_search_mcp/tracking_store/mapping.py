@@ -6,7 +6,7 @@ shortcut, not the intended end state. A later phase replaces this with a
 user-defined, YAML-configurable field list.
 
 Only three of the author's many tracked Notion properties are touched
-here (Status, Fit rating, Key notes) — every other property on an
+here (Status, Fit Rating, Key Notes) — every other property on an
 existing row (company, comp range, source, work arrangement, etc.) is
 left untouched by this mapping.
 """
@@ -16,8 +16,8 @@ from __future__ import annotations
 from job_search_mcp.fit_verdict import FitVerdict
 
 STATUS_PROPERTY = "Status"
-FIT_RATING_PROPERTY = "Fit rating"
-KEY_NOTES_PROPERTY = "Key notes"
+FIT_RATING_PROPERTY = "Fit Rating"
+KEY_NOTES_PROPERTY = "Key Notes"
 
 # push_to_tracker only ever sets this one Status value: running a fit
 # analysis means the job has now been evaluated (but not yet acted on).
@@ -25,16 +25,17 @@ KEY_NOTES_PROPERTY = "Key notes"
 # manual edit the author makes in Notion, not something this tool drives.
 STATUS_VALUE = "Not yet applied"
 
-# 1:1 by name against the author's 5-option Fit rating select
-# (Strong Fit, Good Fit, Possible Fit, Weak Fit, Not A Fit) and
-# evaluate_fit's 5-value bucket enum (docs/adr/0010, amended to 5 tiers).
-# Only the capitalization of "not a fit" differs between the two.
+# Identical strings against the author's Fit Rating select (which also has
+# a "Not yet evaluated" option this tool never sets) and evaluate_fit's
+# 5-value bucket enum (docs/adr/0010, amended to 5 tiers to make this
+# mapping possible). Kept as an explicit table, not a passthrough, so an
+# unrecognized bucket value fails loudly instead of writing garbage to Notion.
 FIT_RATING_BY_BUCKET: dict[str, str] = {
     "Strong Fit": "Strong Fit",
     "Good Fit": "Good Fit",
     "Possible Fit": "Possible Fit",
     "Weak Fit": "Weak Fit",
-    "Not a Fit": "Not A Fit",
+    "Not a Fit": "Not a Fit",
 }
 
 

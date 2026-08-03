@@ -117,7 +117,7 @@ def push_to_tracker(job_id: str, verdict: FitVerdict, dry_run: bool = False) -> 
             without writing anything, so you can review it first.
 
     Only three of your tracked properties are touched: Status (always
-    set to "Not yet applied"), Fit rating, and Key notes — every other
+    set to "Not yet applied"), Fit Rating, and Key Notes — every other
     property on the row (company, comp range, source, work arrangement,
     etc.) is left as-is. See docs/adr/0004-tracking-field-mapping-v1-shortcut.md.
     """

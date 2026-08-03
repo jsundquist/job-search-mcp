@@ -25,37 +25,60 @@ Three interfaces define the boundaries:
 
 Rationale for each of these decisions is recorded in `docs/adr/`.
 
+Embeddings (`src/job_search_mcp/embeddings/`) default to a local
+`SentenceTransformersEmbedder` (`all-MiniLM-L6-v2`) — see
+`docs/adr/0006-embeddings-choice-open.md`.
+
 ## Stack
 
 - Python, dependency management via [`uv`](https://docs.astral.sh/uv/)
 - [`just`](https://github.com/casey/just) as the task runner (see `justfile`)
-- Qdrant (default vector store), Notion (default tracking store)
+- Qdrant (default vector store), Notion (default tracking store, not yet wired up)
+- [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) for the server itself
+
+## MCP tools
+
+- **`match_job(job_description, source_url=None)`** — embeds the job
+  description, retrieves the most relevant resume/experience chunks from
+  the configured `VectorStore`, and returns a heuristic `fit_score`
+  (top-match cosine similarity) plus the retrieved evidence. It does not
+  synthesize strengths/gaps/notes itself — no internal LLM call — so the
+  calling assistant is expected to reason over the returned evidence.
+
+## Setup
+
+1. `just install`
+2. Copy `.env.example` to `.env` and fill in your Qdrant connection details.
+3. Ingest a resume: `uv run python -m job_search_mcp.ingest path/to/resume.pdf`
+4. Register with Claude Code (project-scoped):
+   ```sh
+   claude mcp add job-search-mcp -- uv run --directory "$(pwd)" job-search-mcp
+   ```
+5. In a Claude Code session in this project, ask it to call `match_job`
+   with a real job description to validate retrieval quality.
 
 ## Roadmap
 
-Current phase: repo scaffolding and architecture decision records only —
-no server or matching code yet.
+Current phase: `match_job` works standalone against real Qdrant, validated
+against real job postings. Not yet wired to a tracking store.
 
 Planned next:
 
-- Implement the default `VectorStore` (Qdrant), `TrackingStore` (Notion),
-  and `ResumeSource` (file-based) adapters
-- Implement RAG-based matching logic (`match_job`)
-- Wire up the MCP server entrypoint
+- Notion `TrackingStore` integration — write `match_job` results somewhere durable
 - Make the Notion tracking field mapping configurable via YAML instead of
   the current v1 hardcoded field list
   (`docs/adr/0004-tracking-field-mapping-v1-shortcut.md`)
-- Decide on an embeddings approach (local vs API-based) —
-  `docs/adr/0006-embeddings-choice-open.md`
 - Local SQLite `TrackingStore` and self-hosted Qdrant-in-Docker
   `VectorStore` implementations for users without Notion/Qdrant Cloud
 - Google Drive-backed `ResumeSource` implementation
+- Revisit the embeddings choice if local sentence-transformers quality
+  proves insufficient (`docs/adr/0006-embeddings-choice-open.md`)
 
 ## Development
 
 ```sh
 just install   # uv sync
-just test      # uv run pytest
+just test      # uv run pytest (unit tests only; integration needs QDRANT_URL)
 just lint      # uv run ruff check .
-just run       # no entrypoint yet
+just run       # uv run job-search-mcp (stdio MCP server)
 ```

@@ -13,6 +13,9 @@ dependencies = [
     "sentence-transformers>=5.6.1",
 ]
 
+[project.scripts]
+job-search-mcp = "job_search_mcp.server:main"
+
 [dependency-groups]
 dev = [
     "pytest",

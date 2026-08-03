@@ -1,0 +1,23 @@
+[project]
+name = "job-search-mcp"
+version = "0.1.0"
+description = "MCP server for job-description fit analysis via RAG over a resume/experience corpus, with pluggable vector store, tracking store, and resume source adapters."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/job_search_mcp"]
+
+[tool.ruff]
+line-length = 100

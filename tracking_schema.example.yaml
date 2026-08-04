@@ -22,7 +22,10 @@
 # all (status, fit_rating, notes) — SQLite has no concept of your other,
 # manual fields.
 #
-# This example mirrors a real 14-field Notion tracker. If your tracker is
+# This example mirrors a real 14-field Notion tracker, plus one suggested
+# addition (warm_connection — a personal/former-colleague connection at
+# the company, a factor that matters to prioritization but can't be
+# derived from JD text) not in the original 14. If your tracker is
 # simpler, just list fewer fields — push_to_tracker only ever touches the
 # derived_from ones you declare.
 
@@ -105,3 +108,8 @@ fields:
     manual: true
     notion:
       property: "Work Arrangement"
+
+  - key: warm_connection
+    manual: true
+    notion:
+      property: "Warm Connection"

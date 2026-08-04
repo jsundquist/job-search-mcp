@@ -106,11 +106,15 @@ def compute_derived_value(derived_from: str, verdict: FitVerdict) -> str:
     return builder(verdict)
 
 
-def _notion_property_payload(notion_type: str, value: str) -> dict:
+def notion_property_payload(notion_type: str, value: str) -> dict:
     if notion_type == "select":
         return {"select": {"name": value}}
     if notion_type == "rich_text":
         return {"rich_text": [{"text": {"content": value}}]}
+    if notion_type == "title":
+        return {"title": [{"text": {"content": value}}]}
+    if notion_type == "url":
+        return {"url": value}
     raise TrackingFieldConfigError(f"Unsupported notion.type: {notion_type!r}")
 
 
@@ -144,7 +148,7 @@ def build_notion_properties_from_schema(
             continue
         try:
             value = compute_derived_value(field.derived_from, verdict)
-            payload[field.notion_property] = _notion_property_payload(field.notion_type, value)
+            payload[field.notion_property] = notion_property_payload(field.notion_type, value)
         except TrackingFieldConfigError as exc:
             warnings.append(f"Skipping tracking field {field.key!r}: {exc}")
     return payload, warnings
@@ -176,6 +180,10 @@ def parse_notion_property(prop: dict, notion_type: str | None) -> str | None:
         return (prop.get("select") or {}).get("name")
     if notion_type == "rich_text":
         return "".join(part.get("plain_text", "") for part in prop.get("rich_text") or [])
+    if notion_type == "title":
+        return "".join(part.get("plain_text", "") for part in prop.get("title") or [])
+    if notion_type == "url":
+        return prop.get("url")
     return None
 
 

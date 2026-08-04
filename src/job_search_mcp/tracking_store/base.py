@@ -35,3 +35,30 @@ class TrackingStore(Protocol):
     def list_analyses(self) -> list[dict]:
         """Return all stored analyses."""
         ...
+
+    def find_by_company_role(self, company: str, role: str) -> str | None:
+        """Return the job_id of an existing tracked row matching company+role, if any.
+
+        Exact, case-insensitive match against the schema's 'company'/'role'
+        manual fields. Not every backend can support this (e.g. SQLite has
+        no concept of manual fields) — such backends raise NotImplementedError.
+        """
+        ...
+
+    def create_application(self, company: str, role: str, source_url: str | None = None) -> str:
+        """Create a new tracked row for a company+role and return its job_id.
+
+        Only sets the fields needed to identify the row (company, role, and
+        — if the schema declares a compatible field — source_url); every
+        other manual field is left for the user to fill in by hand, same
+        boundary ADR 0011 established for push_to_tracker.
+        """
+        ...
+
+    def update_status(self, job_id: str, status: str) -> None:
+        """Set the status field on an existing tracked row directly.
+
+        Distinct from record_analysis: this is for candidate-reported
+        lifecycle events (Applied, Rejected, ...), not a FitVerdict.
+        """
+        ...

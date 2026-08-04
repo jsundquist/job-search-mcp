@@ -8,6 +8,7 @@ from job_search_mcp.tracking_store.mapping import (
     build_sqlite_fields_from_schema,
     compute_derived_value,
     map_bucket_to_fit_rating,
+    notion_property_payload,
     parse_notion_property,
 )
 from job_search_mcp.tracking_store.schema import load_tracking_schema
@@ -192,3 +193,19 @@ def test_parse_notion_property_rich_text():
     prop = {"rich_text": [{"plain_text": "hello "}, {"plain_text": "world"}]}
     assert parse_notion_property(prop, "rich_text") == "hello world"
     assert parse_notion_property({}, "rich_text") == ""
+
+
+def test_notion_property_payload_and_parse_title_round_trip():
+    payload = notion_property_payload("title", "Acme — Staff Engineer")
+    assert payload == {"title": [{"text": {"content": "Acme — Staff Engineer"}}]}
+
+    prop = {"title": [{"plain_text": "Acme — "}, {"plain_text": "Staff Engineer"}]}
+    assert parse_notion_property(prop, "title") == "Acme — Staff Engineer"
+    assert parse_notion_property({}, "title") == ""
+
+
+def test_notion_property_payload_and_parse_url_round_trip():
+    payload = notion_property_payload("url", "https://example.com/job")
+    assert payload == {"url": "https://example.com/job"}
+    assert parse_notion_property({"url": "https://example.com/job"}, "url") == "https://example.com/job"
+    assert parse_notion_property({}, "url") is None

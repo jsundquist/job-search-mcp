@@ -121,6 +121,15 @@ Field notes:
 
 ## LLM-facing schema (internal Anthropic call)
 
+**Prompt-injection requirement.** `job_description` is untrusted, often
+web-scraped text. The prompt construction for this call must wrap
+`job_description` in an explicit data delimiter (e.g.
+`<job_description>...</job_description>`), distinct from any
+instruction/system text, with an explicit instruction that content inside
+it is data to analyze, never instructions to follow, regardless of what
+the text itself claims or requests. See
+`docs/adr/0015-prompt-injection-defense-for-job-description-text.md`.
+
 This is the schema the internal Anthropic API call's structured output is
 validated against. It covers exactly the LLM-judgment layers (2, 3, 5) from
 `docs/adr/0010-layer-split-design-evaluate-fit.md` — it does not include

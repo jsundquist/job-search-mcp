@@ -73,6 +73,19 @@ Embeddings (`src/job_search_mcp/embeddings/`) default to a local
   whole write — check the result's `warnings`. `dry_run=True` returns
   the mapped properties payload without writing.
 
+- **`find_or_create_application(company, role, source_url=None, dry_run=False)`**
+  — finds an existing tracked row by exact company+role text match, or
+  creates a new one if none exists. Requires `company` and `role` fields
+  with a `notion.property` declared in `tracking_schema.yaml`. Returns
+  `{"job_id": ..., "created": bool}`. See
+  `docs/adr/0013-find-or-create-application.md`.
+
+- **`update_status(job_id, status, dry_run=False)`** — sets the Status
+  field on an existing tracked row directly, for candidate-reported
+  lifecycle events (Applied, Rejected, Interviewing, Offer, ...). Decoupled
+  from `FitVerdict`/`push_to_tracker` entirely — see
+  `docs/adr/0014-update-status-tool.md`.
+
 - **`list_applications(status=None)`** — lists tracked jobs from the
   configured `TrackingStore`, each with `job_id` plus whatever
   tool-populated fields your schema declares (typically `status`,
@@ -132,10 +145,11 @@ for the full design.
 
 ## Roadmap
 
-Shipped: `match_job` (retrieval), `push_to_tracker` and `list_applications`
-against `NotionTrackingStore`, the YAML-configurable tracking field
-schema (`docs/adr/0011-configurable-tracking-field-schema.md`), and the
-ingestion pipeline (`ResumeSource` → chunking → embedding → `VectorStore`).
+Shipped: `match_job` (retrieval), `push_to_tracker`, `list_applications`,
+`find_or_create_application`, and `update_status` against
+`NotionTrackingStore`, the YAML-configurable tracking field schema
+(`docs/adr/0011-configurable-tracking-field-schema.md`), and the ingestion
+pipeline (`ResumeSource` → chunking → embedding → `VectorStore`).
 
 Planned next:
 
@@ -150,6 +164,32 @@ Planned next:
 - Google Drive-backed `ResumeSource` implementation
 - Revisit the embeddings choice if local sentence-transformers quality
   proves insufficient (`docs/adr/0006-embeddings-choice-open.md`)
+
+Deferred, low priority (no design commitment beyond the note below):
+
+- **Bulk re-evaluation when `candidate_profile.yaml` changes** —
+  `target_floor`/`title_mapping_note` are documented as editable-but-stable,
+  so a value changing after postings are already tracked is a foreseeable
+  case. Open question: whether `list_applications` + re-running
+  `evaluate_fit` is sufficient once that tool exists, or whether the
+  original `job_description` text needs to be persisted somewhere (it
+  currently isn't) to make re-evaluation possible later.
+- **Duplicate/near-duplicate JD detection** — companies commonly post
+  near-identical reqs for genuinely different underlying roles (same
+  title, similar boilerplate, different team/contract). Neither
+  `match_job`/`evaluate_fit` nor `find_or_create_application`
+  (`docs/adr/0013-find-or-create-application.md`, which only matches
+  exact company+role text) currently detect this. Direction: a
+  lightweight hash/fuzzy-match check against previously-ingested
+  postings, surfaced as a warning rather than blocking.
+
+Both items above were raised alongside specific anecdotes (a mid-search
+`target_floor` change; two near-duplicate "Skylight" postings) that a
+`transcript-search` check found no independent record of — see
+`docs/adr/0015-prompt-injection-defense-for-job-description-text.md`'s
+Verification section for the same check applied to a related claim from
+the same source. Both items stand on the general reasoning above
+regardless of that.
 
 ## Development
 

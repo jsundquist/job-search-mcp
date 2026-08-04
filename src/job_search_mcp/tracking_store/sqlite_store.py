@@ -84,6 +84,35 @@ class SQLiteTrackingStore:
         rows = self._connection.execute(f"SELECT {self._select_columns()} FROM analyses").fetchall()
         return [self._row_to_dict(row) for row in rows]
 
+    def find_by_company_role(self, company: str, role: str) -> str | None:
+        raise NotImplementedError(
+            "SQLiteTrackingStore has no concept of manual fields like company/role — "
+            "find_or_create_application requires NotionTrackingStore."
+        )
+
+    def create_application(self, company: str, role: str, source_url: str | None = None) -> str:
+        raise NotImplementedError(
+            "SQLiteTrackingStore has no concept of manual fields like company/role — "
+            "find_or_create_application requires NotionTrackingStore."
+        )
+
+    def update_status(self, job_id: str, status: str) -> None:
+        status_field = next((f for f in self._fields if f.key == "status"), None)
+        if not status_field:
+            raise RuntimeError(
+                "update_status requires a 'status' field with a sqlite.column declared in your "
+                "tracking_schema.yaml."
+            )
+        self._connection.execute(
+            "INSERT INTO analyses (job_id) VALUES (:job_id) ON CONFLICT DO NOTHING",
+            {"job_id": job_id},
+        )
+        self._connection.execute(
+            f"UPDATE analyses SET {status_field.sqlite_column} = :status WHERE job_id = :job_id",
+            {"job_id": job_id, "status": status},
+        )
+        self._connection.commit()
+
     def close(self) -> None:
         self._connection.close()
 

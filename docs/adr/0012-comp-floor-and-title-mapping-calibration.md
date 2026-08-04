@@ -121,12 +121,47 @@ Layer 6); "comp ambiguity" in Layer 5 is reserved for vague or evasive
 comp language that still isn't silence — "competitive salary" with no
 number, an implausibly wide range, and similar.
 
-**Comp comparability is out of scope.** `target_floor` is assumed to be a
-single number in the same units/structure a posting's comp range is
-expected to use (e.g. annual total target comp). Reconciling mismatched
+**Comp comparability is out of scope for the initial Layer 6 design, with
+fallback rules specified below (promoted from open limitation to
+near-term roadmap item).** `target_floor` is assumed to be a single
+number in the same units/structure a posting's comp range is expected to
+use (e.g. annual total target comp). Full reconciliation of mismatched
 structures — hourly contract rates, equity-heavy offers, base-only vs.
-base+bonus postings — is not handled by this design. This is a known
-limitation, not an oversight to be silently assumed away.
+base+bonus postings — is still not handled by this design. This
+promotion is based on the general, easily-observable fact that job
+postings are inconsistent about comp structure (zone/level-banded ranges,
+mixed currencies, base-only vs. OTE vs. equity-heavy framing are all
+common, verifiable patterns independent of any particular search) — not
+on a frequency claim from the unverified retrospective account that
+originally motivated Layer 6 (see "Validation" below).
+
+**Deterministic fallback rules for ambiguous comp structures:**
+
+- **Zone/level-banded postings** (a range tied to a level or geographic
+  zone rather than a single stated ceiling): treat as ambiguous, same
+  tier as "no comp listed" (`moderate-to-large penalty`,
+  `meets_floor: false`), unless the posting's stated level can be matched
+  against `title_mapping_note` to select the correct band's ceiling. This
+  reuses the same "unverifiable floor is not given the benefit of the
+  doubt" principle the "no comp listed" rule already established above,
+  rather than inventing a new tier.
+- **Currency mismatches** (posting's stated currency differs from
+  `target_floor`'s implicit currency): convert using a reliable rate if
+  one is available at evaluation time; otherwise treat as ambiguous
+  (same tier as above) rather than comparing raw numbers across
+  currencies, which would silently produce a meaningless result.
+- **Comp structures other than the one `target_floor` represents**
+  (hourly contract rates, equity-heavy offers, base-only vs. base+bonus):
+  the assumed structure (annual total target comp) must be documented
+  explicitly in `candidate_profile.example.yaml`'s comments, not left
+  implicit. A posting that doesn't clearly state which structure it's
+  using is treated as ambiguous, same tier as above.
+
+These rules are still deterministic, rule-based fallbacks — they don't
+require LLM judgment or a new layer, and they don't change Layer 6's
+tiering enum or demotion contribution. They are documentation/design
+decisions for whoever implements `evaluate_fit`'s Layer 6, same
+implementation-not-yet-started status as the rest of this ADR.
 
 ### `target_floor` provenance — closed by `candidate_profile.yaml`, not by a tool-input parameter
 

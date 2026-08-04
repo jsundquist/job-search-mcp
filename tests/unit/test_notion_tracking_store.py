@@ -25,6 +25,14 @@ fields:
     manual: true
     notion:
       property: "Company"
+  - key: role
+    manual: true
+    notion:
+      property: "Role"
+  - key: jd_link
+    manual: true
+    notion:
+      property: "JD Link"
 """
 
 
@@ -51,6 +59,8 @@ class _FakePagesEndpoint:
         self._pages = pages
         self._missing_ids = missing_ids or set()
         self.update_calls: list[tuple[str, dict]] = []
+        self.create_calls: list[dict] = []
+        self._next_id = 1
 
     def update(self, page_id: str, properties: dict) -> None:
         if page_id in self._missing_ids:
@@ -61,8 +71,22 @@ class _FakePagesEndpoint:
     def retrieve(self, page_id: str) -> dict:
         return self._pages[page_id]
 
+    def create(self, parent: dict, properties: dict) -> dict:
+        self.create_calls.append({"parent": parent, "properties": properties})
+        page_id = f"new-page-{self._next_id}"
+        self._next_id += 1
+        self._pages[page_id] = {"id": page_id, "archived": False, "properties": properties}
+        return self._pages[page_id]
 
-_DEFAULT_KNOWN_PROPERTIES = {"Status": {}, "Fit Rating": {}, "Key Notes": {}, "Company": {}}
+
+_DEFAULT_KNOWN_PROPERTIES = {
+    "Status": {"type": "select"},
+    "Fit Rating": {"type": "select"},
+    "Key Notes": {"type": "rich_text"},
+    "Company": {"type": "title"},
+    "Role": {"type": "rich_text"},
+    "JD Link": {"type": "url"},
+}
 
 
 class _FakeDatabasesEndpoint:
@@ -225,3 +249,91 @@ def test_record_analysis_returns_no_warnings_when_schema_matches_database(tmp_pa
     warnings = store.record_analysis("page-1", _verdict())
 
     assert warnings == []
+
+
+def test_find_by_company_role_returns_matching_job_id_case_insensitive(tmp_path):
+    pages = {
+        "page-1": {
+            "id": "page-1",
+            "archived": False,
+            "properties": {
+                "Company": {"title": [{"plain_text": "Acme"}]},
+                "Role": {"rich_text": [{"plain_text": "Staff Engineer"}]},
+            },
+        }
+    }
+    store = _make_store(tmp_path, pages)
+
+    assert store.find_by_company_role("acme", "STAFF ENGINEER") == "page-1"
+    assert store.find_by_company_role("Acme", "Principal Engineer") is None
+
+
+def test_find_by_company_role_skips_archived_pages(tmp_path):
+    pages = {
+        "page-1": {
+            "id": "page-1",
+            "archived": True,
+            "properties": {
+                "Company": {"title": [{"plain_text": "Acme"}]},
+                "Role": {"rich_text": [{"plain_text": "Staff Engineer"}]},
+            },
+        }
+    }
+    store = _make_store(tmp_path, pages)
+
+    assert store.find_by_company_role("Acme", "Staff Engineer") is None
+
+
+def test_find_by_company_role_requires_company_and_role_fields(tmp_path):
+    schema_file = tmp_path / "tracking_schema.yaml"
+    schema_file.write_text(
+        "fields:\n  - key: status\n    derived_from: status_fixed\n    notion:\n      "
+        "property: Status\n      type: select\n"
+    )
+    store = NotionTrackingStore(database_id="db-1", api_key="secret", schema=load_tracking_schema(schema_file))
+
+    with pytest.raises(RuntimeError, match="requires 'company' and 'role' fields"):
+        store.find_by_company_role("Acme", "Staff Engineer")
+
+
+def test_create_application_writes_title_rich_text_and_url(tmp_path):
+    pages: dict[str, dict] = {}
+    store = _make_store(tmp_path, pages)
+
+    job_id = store.create_application("Acme", "Staff Engineer", source_url="https://example.com/job")
+
+    assert job_id in pages
+    create_call = store._client.pages.create_calls[0]
+    properties = create_call["properties"]
+    assert properties["Company"] == {"title": [{"text": {"content": "Acme"}}]}
+    assert properties["Role"] == {"rich_text": [{"text": {"content": "Staff Engineer"}}]}
+    assert properties["JD Link"] == {"url": "https://example.com/job"}
+    assert create_call["parent"] == {"database_id": "db-1"}
+
+
+def test_create_application_without_source_url_omits_jd_link(tmp_path):
+    pages: dict[str, dict] = {}
+    store = _make_store(tmp_path, pages)
+
+    store.create_application("Acme", "Staff Engineer")
+
+    properties = store._client.pages.create_calls[0]["properties"]
+    assert "JD Link" not in properties
+
+
+def test_update_status_writes_only_status_property(tmp_path):
+    pages = {"page-1": {"id": "page-1", "archived": False, "properties": {}}}
+    store = _make_store(tmp_path, pages)
+
+    store.update_status("page-1", "Applied")
+
+    page_id, properties = store._client.pages.update_calls[0]
+    assert page_id == "page-1"
+    assert properties == {"Status": {"select": {"name": "Applied"}}}
+
+
+def test_update_status_raises_clear_error_for_unknown_job_id(tmp_path):
+    store = _make_store(tmp_path, {}, missing_ids={"missing-page"})
+
+    with pytest.raises(RuntimeError, match="No Notion page found for job_id='missing-page'"):
+        store.update_status("missing-page", "Applied")

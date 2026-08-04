@@ -105,6 +105,14 @@ no number, an implausibly wide range) — a posting that lists **no** comp
 range at all is scored exclusively by Layer 6 below, not double-counted
 here, to avoid demoting the same underlying fact twice.
 
+Also covers suspected prompt injection: content in the posting that reads
+as an attempt to inject instructions into the assistant's reasoning,
+manipulate its behavior, or embed a canary/test string. `job_description`
+is untrusted, often web-scraped text — see
+`docs/adr/0015-prompt-injection-defense-for-job-description-text.md` for
+the prompt-construction requirement this implies for the internal LLM
+call, and why this is scored here rather than given a dedicated field.
+
 ## Layer 6 — Comp floor check
 
 Deterministic, not LLM judgment — same category as Layer 1 and Layer 4.
@@ -133,9 +141,22 @@ validated — see
 
 `target_floor` is assumed to be a single number in the same units/
 structure a posting's comp range is expected to use (e.g. annual total
-target comp). Reconciling mismatched structures — hourly contract rates,
+target comp, as documented explicitly in `candidate_profile.example.yaml`).
+Full reconciliation of mismatched structures — hourly contract rates,
 equity-heavy offers, base-only vs. base+bonus postings — is not handled
-by this design; see the ADR for this limitation.
+by this design; see the ADR for this limitation. Deterministic fallback
+rules for common ambiguous cases:
+
+- Zone/level-banded postings (a range tied to a level or geography rather
+  than one stated ceiling): ambiguous, same tier as "no comp listed,"
+  unless the stated level can be matched via `title_mapping_note`.
+- Currency mismatches: convert if a reliable rate is available at
+  evaluation time; otherwise ambiguous, same tier as above.
+- Any comp structure other than the assumed one: ambiguous, same tier as
+  above, if the posting doesn't clearly state which structure it uses.
+
+See `docs/adr/0012-comp-floor-and-title-mapping-calibration.md` for the
+full rationale.
 
 ## Bucket model
 

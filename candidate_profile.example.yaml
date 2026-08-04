@@ -4,10 +4,15 @@
 
 # Minimum acceptable total comp (used by evaluate_fit's Layer 6 comp-floor
 # check). Compared against the posting's stated ceiling, not its floor.
-# Assumed to be a single number in the same units/structure a posting's
-# comp range is expected to use (e.g. annual total target comp) — hourly
-# contract rates, equity-heavy offers, and base-only vs. base+bonus
-# postings are not reconciled automatically.
+#
+# Assumed structure: annual total target comp, USD. A posting using a
+# different structure (hourly contract rate, equity-heavy offer,
+# base-only vs. base+bonus, a different currency, or a zone/level-banded
+# range instead of one stated ceiling) is treated as ambiguous — same
+# tier as "no comp listed" — rather than compared directly, unless a
+# reliable currency conversion applies or the level can be matched via
+# title_mapping_note below. See
+# docs/adr/0012-comp-floor-and-title-mapping-calibration.md.
 target_floor: 190000
 
 # Free-text note correcting for employer-specific title inflation or

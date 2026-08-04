@@ -93,6 +93,30 @@ def test_record_analysis_returns_no_warnings_for_a_valid_schema(store):
     assert store.record_analysis("job-1", _verdict()) == []
 
 
+def test_update_status_sets_status_column(store):
+    store.record_analysis("job-1", _verdict(bucket="Strong Fit"))
+
+    store.update_status("job-1", "Applied")
+
+    assert store.get_analysis("job-1")["status"] == "Applied"
+
+
+def test_update_status_creates_row_if_missing(store):
+    store.update_status("job-1", "Applied")
+
+    assert store.get_analysis("job-1")["status"] == "Applied"
+
+
+def test_find_by_company_role_not_implemented(store):
+    with pytest.raises(NotImplementedError):
+        store.find_by_company_role("Acme", "Staff Engineer")
+
+
+def test_create_application_not_implemented(store):
+    with pytest.raises(NotImplementedError):
+        store.create_application("Acme", "Staff Engineer")
+
+
 def test_record_analysis_warns_and_skips_unrecognized_derived_from(tmp_path):
     schema_file = tmp_path / "tracking_schema.yaml"
     schema_file.write_text(

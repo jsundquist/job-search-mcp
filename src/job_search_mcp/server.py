@@ -154,6 +154,68 @@ def push_to_tracker(job_id: str, verdict: FitVerdict, dry_run: bool = False) -> 
 
 
 @mcp.tool()
+def find_or_create_application(
+    company: str, role: str, source_url: str | None = None, dry_run: bool = False
+) -> dict:
+    """Find an existing tracked row for a company+role, or create one if none exists.
+
+    Args:
+        company: Company name. Matched against your tracking_schema.yaml's 'company' field,
+            exact text match, case-insensitive.
+        role: Role/title. Matched against your 'role' field, same match rules as company.
+        source_url: Optional URL the job description was pulled from — written to your 'jd_link'
+            field on create, if your schema declares one with a compatible Notion type
+            (url or rich_text).
+        dry_run: If true, only searches — never creates a new row even if none is found.
+
+    Returns {"job_id": ..., "created": bool}. Requires 'company' and 'role' fields with a
+    notion.property declared in tracking_schema.yaml. Matching is exact text match only —
+    near-duplicate postings (different req, same title) are not deduplicated by this tool.
+    """
+    if not company or not company.strip():
+        raise ValueError("company must not be empty.")
+    if not role or not role.strip():
+        raise ValueError("role must not be empty.")
+
+    store = _get_tracking_store()
+    existing = store.find_by_company_role(company, role)
+    if existing is not None:
+        return {"job_id": existing, "created": False}
+    if dry_run:
+        return {"job_id": None, "created": False}
+
+    job_id = store.create_application(company, role, source_url)
+    return {"job_id": job_id, "created": True}
+
+
+@mcp.tool()
+def update_status(job_id: str, status: str, dry_run: bool = False) -> dict:
+    """Record a candidate-reported lifecycle event (Applied, Rejected, Interviewing, Offer, ...).
+
+    Args:
+        job_id: The Notion page ID of the tracked row to update.
+        status: The new status value — must match one of your Status select's option names.
+        dry_run: If true, validates inputs and returns the intended write without touching Notion.
+
+    Distinct from push_to_tracker: never touches fit_rating or notes, and isn't driven by a
+    FitVerdict — use it for outcome events reported after the fact, not fit-analysis results.
+    push_to_tracker only ever sets status once, at analysis time, to a fixed value; if both tools
+    are called against the same row, whichever call lands last wins (see
+    docs/adr/0014-update-status-tool.md).
+    """
+    if not job_id or not job_id.strip():
+        raise ValueError("job_id must not be empty.")
+    if not status or not status.strip():
+        raise ValueError("status must not be empty.")
+
+    if dry_run:
+        return {"job_id": job_id, "status": status, "dry_run": True}
+
+    _get_tracking_store().update_status(job_id, status)
+    return {"job_id": job_id, "status": status, "dry_run": False}
+
+
+@mcp.tool()
 def list_applications(status: str | None = None) -> list[dict]:
     """List tracked jobs from the configured tracking store (Notion).
 

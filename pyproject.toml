@@ -21,6 +21,7 @@ job-search-mcp = "job_search_mcp.server:main"
 [dependency-groups]
 dev = [
     "pytest",
+    "pytest-cov",
     "ruff",
 ]
 
@@ -38,3 +39,14 @@ line-length = 100
 testpaths = ["tests"]
 markers = ["integration: requires a live Qdrant instance (set QDRANT_URL, see .env.example)"]
 addopts = "-m 'not integration'"
+
+[tool.coverage.run]
+source = ["src/job_search_mcp"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]

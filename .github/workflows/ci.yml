@@ -8,6 +8,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -22,4 +25,30 @@ jobs:
         run: uv run ruff check .
 
       - name: Test
-        run: uv run pytest
+        run: |
+          uv run pytest \
+            --cov=src/job_search_mcp \
+            --cov-report=term-missing \
+            --junitxml=pytest.xml | tee pytest-coverage.txt
+
+      # Always runs (push to main or PR) so coverage is visible on every
+      # run's Actions page, not just on PRs.
+      - name: Add coverage to job summary
+        if: always()
+        run: |
+          {
+            echo "## Coverage Report"
+            echo '```'
+            cat pytest-coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Requires pull-requests: write on GITHUB_TOKEN, which GitHub only grants
+      # for PRs from branches within this repo (not forks). For fork PRs the
+      # comment silently fails to post.
+      - name: Pytest coverage comment
+        if: github.event_name == 'pull_request'
+        uses: MishaKav/pytest-coverage-comment@v1.11.0
+        with:
+          pytest-coverage-path: ./pytest-coverage.txt
+          junitxml-path: ./pytest.xml

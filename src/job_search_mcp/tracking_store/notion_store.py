@@ -29,6 +29,13 @@ from job_search_mcp.tracking_store.schema import TrackingField, TrackingSchema
 logger = logging.getLogger(__name__)
 
 
+def _normalize_id(notion_id: str | None) -> str | None:
+    """Notion IDs are equivalent dashed or undashed; compare on a canonical form."""
+    if notion_id is None:
+        return None
+    return notion_id.replace("-", "").lower()
+
+
 class NotionTrackingStore:
     """TrackingStore backed by the author's existing Notion tracking database."""
 
@@ -44,6 +51,7 @@ class NotionTrackingStore:
         for warning in warnings:
             logger.warning(warning)
 
+        self._assert_owned(job_id)
         try:
             self._client.pages.update(page_id=job_id, properties=properties)
         except APIResponseError as exc:
@@ -132,7 +140,19 @@ class NotionTrackingStore:
                 "update_status requires a 'status' field with a notion.property declared in "
                 "your tracking_schema.yaml."
             )
-        payload = notion_property_payload(status_field.notion_type or "select", status)
+        notion_type = status_field.notion_type or "select"
+        if notion_type in ("select", "status"):
+            known_properties = self._client.databases.retrieve(database_id=self.database_id).get("properties", {})
+            options = known_properties.get(status_field.notion_property, {}).get(notion_type, {}).get("options", [])
+            allowed = {option["name"] for option in options}
+            if allowed and status not in allowed:
+                raise RuntimeError(
+                    f"{status!r} is not one of the configured Status options: "
+                    f"{sorted(allowed)!r}."
+                )
+        payload = notion_property_payload(notion_type, status)
+
+        self._assert_owned(job_id)
         try:
             self._client.pages.update(page_id=job_id, properties={status_field.notion_property: payload})
         except APIResponseError as exc:
@@ -142,6 +162,44 @@ class NotionTrackingStore:
 
     def _field(self, key: str) -> TrackingField | None:
         return next((field for field in self.schema.fields if field.key == key), None)
+
+    def _assert_owned(self, job_id: str) -> None:
+        """Verify `job_id` is a page inside `self.database_id` before writing to it.
+
+        `pages.update`/`pages.retrieve` accept any page ID the integration
+        token can reach, not just rows in the configured tracking database —
+        without this check, a caller (including an LLM agent whose reasoning
+        was influenced by untrusted job-posting text, see
+        docs/adr/0015-prompt-injection-defense-for-job-description-text.md)
+        could point `job_id` at an unrelated page and have it silently
+        modified.
+        """
+        try:
+            page = self._client.pages.retrieve(page_id=job_id)
+        except APIResponseError as exc:
+            if exc.code == APIErrorCode.ObjectNotFound:
+                raise RuntimeError(f"No Notion page found for job_id={job_id!r}.") from exc
+            raise
+        parent = page.get("parent", {})
+        parent_type = parent.get("type")
+
+        owned = False
+        if parent_type == "database_id":
+            owned = _normalize_id(parent.get("database_id")) == _normalize_id(self.database_id)
+        elif parent_type == "data_source_id":
+            # Notion's 2025-09 API: rows created against a database's data
+            # source report that data source, not the database, as parent.
+            database = self._client.databases.retrieve(database_id=self.database_id)
+            known_data_source_ids = {ds["id"] for ds in database.get("data_sources", [])}
+            owned = _normalize_id(parent.get("data_source_id")) in {
+                _normalize_id(ds_id) for ds_id in known_data_source_ids
+            }
+
+        if not owned:
+            raise RuntimeError(
+                f"job_id={job_id!r} does not belong to the configured tracking database "
+                f"({self.database_id!r}) — refusing to write to it."
+            )
 
     def _iter_raw_pages(self):
         # Notion's 2025-09 API splits a database into one or more data

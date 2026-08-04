@@ -69,6 +69,8 @@ class _FakePagesEndpoint:
         self._pages[page_id]["properties"].update(properties)
 
     def retrieve(self, page_id: str) -> dict:
+        if page_id in self._missing_ids or page_id not in self._pages:
+            raise _not_found_error()
         return self._pages[page_id]
 
     def create(self, parent: dict, properties: dict) -> dict:
@@ -140,6 +142,7 @@ def test_record_analysis_updates_existing_page_by_id(tmp_path):
         "page-1": {
             "id": "page-1",
             "archived": False,
+            "parent": {"type": "database_id", "database_id": "db-1"},
             "properties": {"Company": {"title": [{"plain_text": "Acme"}]}},
         }
     }
@@ -229,7 +232,14 @@ def test_list_analyses_raises_clear_error_when_database_has_no_data_sources(tmp_
 
 
 def test_record_analysis_skips_field_with_missing_notion_property_and_warns(tmp_path):
-    pages = {"page-1": {"id": "page-1", "archived": False, "properties": {}}}
+    pages = {
+        "page-1": {
+            "id": "page-1",
+            "archived": False,
+            "parent": {"type": "database_id", "database_id": "db-1"},
+            "properties": {},
+        }
+    }
     store = _make_store(tmp_path, pages, known_properties={"Status": {}, "Fit Rating": {}})
 
     warnings = store.record_analysis("page-1", _verdict(bucket="Weak Fit"))
@@ -243,12 +253,35 @@ def test_record_analysis_skips_field_with_missing_notion_property_and_warns(tmp_
 
 
 def test_record_analysis_returns_no_warnings_when_schema_matches_database(tmp_path):
-    pages = {"page-1": {"id": "page-1", "archived": False, "properties": {}}}
+    pages = {
+        "page-1": {
+            "id": "page-1",
+            "archived": False,
+            "parent": {"type": "database_id", "database_id": "db-1"},
+            "properties": {},
+        }
+    }
     store = _make_store(tmp_path, pages)
 
     warnings = store.record_analysis("page-1", _verdict())
 
     assert warnings == []
+
+
+def test_record_analysis_refuses_to_write_page_outside_configured_database(tmp_path):
+    pages = {
+        "page-1": {
+            "id": "page-1",
+            "archived": False,
+            "parent": {"type": "database_id", "database_id": "some-other-db"},
+            "properties": {},
+        }
+    }
+    store = _make_store(tmp_path, pages)
+
+    with pytest.raises(RuntimeError, match="does not belong to the configured tracking database"):
+        store.record_analysis("page-1", _verdict())
+    assert store._client.pages.update_calls == []
 
 
 def test_find_by_company_role_returns_matching_job_id_case_insensitive(tmp_path):
@@ -322,7 +355,14 @@ def test_create_application_without_source_url_omits_jd_link(tmp_path):
 
 
 def test_update_status_writes_only_status_property(tmp_path):
-    pages = {"page-1": {"id": "page-1", "archived": False, "properties": {}}}
+    pages = {
+        "page-1": {
+            "id": "page-1",
+            "archived": False,
+            "parent": {"type": "database_id", "database_id": "db-1"},
+            "properties": {},
+        }
+    }
     store = _make_store(tmp_path, pages)
 
     store.update_status("page-1", "Applied")
@@ -337,3 +377,63 @@ def test_update_status_raises_clear_error_for_unknown_job_id(tmp_path):
 
     with pytest.raises(RuntimeError, match="No Notion page found for job_id='missing-page'"):
         store.update_status("missing-page", "Applied")
+
+
+def test_update_status_refuses_to_write_page_outside_configured_database(tmp_path):
+    pages = {
+        "page-1": {
+            "id": "page-1",
+            "archived": False,
+            "parent": {"type": "database_id", "database_id": "some-other-db"},
+            "properties": {},
+        }
+    }
+    store = _make_store(tmp_path, pages)
+
+    with pytest.raises(RuntimeError, match="does not belong to the configured tracking database"):
+        store.update_status("page-1", "Applied")
+    assert store._client.pages.update_calls == []
+
+
+def test_update_status_refuses_unrecognized_select_option(tmp_path):
+    pages = {
+        "page-1": {
+            "id": "page-1",
+            "archived": False,
+            "parent": {"type": "database_id", "database_id": "db-1"},
+            "properties": {},
+        }
+    }
+    known_properties = dict(_DEFAULT_KNOWN_PROPERTIES)
+    known_properties["Status"] = {
+        "type": "select",
+        "select": {"options": [{"name": "Applied"}, {"name": "Rejected"}]},
+    }
+    store = _make_store(tmp_path, pages, known_properties=known_properties)
+
+    with pytest.raises(RuntimeError, match="not one of the configured Status options"):
+        store.update_status("page-1", "Ghosted")
+    assert store._client.pages.update_calls == []
+
+
+def test_update_status_accepts_a_configured_select_option(tmp_path):
+    pages = {
+        "page-1": {
+            "id": "page-1",
+            "archived": False,
+            "parent": {"type": "database_id", "database_id": "db-1"},
+            "properties": {},
+        }
+    }
+    known_properties = dict(_DEFAULT_KNOWN_PROPERTIES)
+    known_properties["Status"] = {
+        "type": "select",
+        "select": {"options": [{"name": "Applied"}, {"name": "Rejected"}]},
+    }
+    store = _make_store(tmp_path, pages, known_properties=known_properties)
+
+    store.update_status("page-1", "Rejected")
+
+    page_id, properties = store._client.pages.update_calls[0]
+    assert page_id == "page-1"
+    assert properties == {"Status": {"select": {"name": "Rejected"}}}

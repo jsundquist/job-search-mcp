@@ -86,6 +86,10 @@ Embeddings (`src/job_search_mcp/embeddings/`) default to a local
   from `FitVerdict`/`push_to_tracker` entirely — see
   `docs/adr/0014-update-status-tool.md`.
 
+`push_to_tracker` and `update_status` both verify the target `job_id`
+actually belongs to your configured Notion database before writing to it
+— see `docs/adr/0016-job-id-ownership-check.md`.
+
 - **`list_applications(status=None)`** — lists tracked jobs from the
   configured `TrackingStore`, each with `job_id` plus whatever
   tool-populated fields your schema declares (typically `status`,

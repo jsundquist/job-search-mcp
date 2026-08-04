@@ -51,7 +51,11 @@ Embeddings (`src/job_search_mcp/embeddings/`) default to a local
   `docs/adr/0008-resume-chunking-strategy.md`). It does not synthesize a
   fit verdict itself — no internal LLM call — so the calling assistant is
   expected to reason over the returned evidence, applying the
-  `job-fit://rubric` resource returned alongside it.
+  `job-fit://rubric` resource returned alongside it. Since
+  `job_description` is often scraped/pasted web text, the result also
+  includes it wrapped in an explicit data delimiter with a
+  do-not-follow-instructions notice
+  (`docs/adr/0017-delimit-job-description-in-match-job-result.md`).
 
   Note: `docs/adr/0009-caller-agnostic-reversal.md` calls for this
   judgment step to move server-side into a new `evaluate_fit` tool, so

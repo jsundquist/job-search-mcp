@@ -88,12 +88,18 @@ exists to surface to the candidate.
 
 Explicitly out of scope, per the instruction that produced this ADR: no
 broader defensive-prompting research effort, no new tooling (e.g. a
-separate classifier pass), no changes to `match_job` (which has no
-internal LLM call to protect — the calling assistant reasons over
-retrieved evidence itself today, per ADR 0009's "Status (historical)"
-section in `docs/job_fit_scoring_algorithm.md`). This is a personal
-single-user tool; the defense here is proportionate to that, not to a
-multi-tenant threat model.
+separate classifier pass). This is a personal single-user tool; the
+defense here is proportionate to that, not to a multi-tenant threat
+model.
+
+**Revised by `docs/adr/0017-delimit-job-description-in-match-job-result.md`:**
+this ADR originally also excluded `match_job` on the grounds that it "has
+no internal LLM call to protect." That reasoning missed that `match_job`
+still hands raw `job_description` text to an LLM — just the calling
+assistant's context via the tool result, not an LLM call this server
+makes internally. ADR 0017 closes that gap and extracts the delimiting
+helper (`job_search_mcp.prompt_safety`) this ADR's Decision section calls
+for, so it's ready for `evaluate_fit` to reuse once implemented.
 
 ## Consequences
 
